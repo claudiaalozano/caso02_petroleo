@@ -218,3 +218,29 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Datos originales y preprocesados
+data/
+
+# Archivos de datos
+*.csv
+*.parquet
+*.xlsx
+*.pkl
+
+# Modelos entrenados (RNN, LSTM y GRU)
+*.pt
+*.pth
+*.h5
+*.keras
+*.ckpt
+
+# Resultados temporales del entrenamiento
+logs/
+runs/
+checkpoints/
+tensorboard/
+
+# Entorno Conda local
+conda-env/
