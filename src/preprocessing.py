@@ -18,6 +18,8 @@ VARIABLES_ORIGINALES = [
     "cny_por_usd",
     "vix",
     "indice_dolar",
+    "oro",
+    "cobre"
 ]
 
 VARIABLES_MODELO = VARIABLES_ORIGINALES + [
