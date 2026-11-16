@@ -1,4 +1,4 @@
-name: Daily Oil Data Update
+name: Daily Oil Data Update and Model Retraining
 
 on:
   schedule:
@@ -10,30 +10,45 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: oil-data-retraining
+  cancel-in-progress: false
+
 jobs:
-  update-data:
+  update-data-and-models:
 
     runs-on: ubuntu-latest
 
+    env:
+      HF_REPO_ID: ${{ vars.HF_REPO_ID }}
+      MPLBACKEND: Agg
+
     steps:
 
+      # 1. Descargar el repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Configurar Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      # 3. Instalar dependencias
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pandas numpy requests yfinance pandas-datareader
+          pip install scikit-learn matplotlib joblib huggingface_hub
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
 
+      # 4. Actualizar los datos
       - name: Download oil market data
         run: |
           python scripts/download_data.py
 
+      # 5. Guardar los datos en GitHub
       - name: Commit and push updated dataset
         run: |
           git config user.name "github-actions[bot]"
@@ -47,3 +62,105 @@ jobs:
             git commit -m "Automatic daily oil dataset update"
             git push
           fi
+
+      # 6. Comprobar si es necesario reentrenar
+      - name: Check if retraining is necessary
+        id: check_training
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import hashlib
+          import json
+          from pathlib import Path
+          from huggingface_hub import HfApi, hf_hub_download
+
+          repo_id = os.environ["HF_REPO_ID"]
+          token = os.environ["HF_TOKEN"]
+
+          dataset_hash = hashlib.sha256(
+              Path("data/petroleo_dataset.csv").read_bytes()
+          ).hexdigest()
+
+          api = HfApi(token=token)
+
+          pendiente = True
+
+          if api.file_exists(
+              repo_id=repo_id,
+              filename="ultimo_entrenamiento.json"
+          ):
+              ruta = hf_hub_download(
+                  repo_id=repo_id,
+                  filename="ultimo_entrenamiento.json",
+                  token=token
+              )
+
+              with open(ruta) as f:
+                  ultimo = json.load(f)
+
+              pendiente = ultimo["dataset_sha256"] != dataset_hash
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"retrain={str(pendiente).lower()}\n")
+
+          print("Dataset SHA256:", dataset_hash)
+          print("Reentrenamiento necesario:", pendiente)
+          PY
+
+      # 7. Reentrenar los modelos
+      - name: Retrain oil forecasting models
+        if: steps.check_training.outputs.retrain == 'true'
+        run: |
+          python -m scripts.retrain_models
+
+      # 8. Subir los modelos a Hugging Face
+      - name: Upload models to Hugging Face
+        if: steps.check_training.outputs.retrain == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -m scripts.upload_models
+
+      # 9. Registrar el entrenamiento completado
+      - name: Register successful retraining
+        if: steps.check_training.outputs.retrain == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import hashlib
+          import json
+          from pathlib import Path
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from huggingface_hub import HfApi
+
+          fecha = datetime.now(ZoneInfo("Europe/Madrid"))
+
+          registro = {
+              "fecha_reentrenamiento": fecha.isoformat(),
+              "dataset_sha256": hashlib.sha256(
+                  Path("data/petroleo_dataset.csv").read_bytes()
+              ).hexdigest()
+          }
+
+          ruta = Path("ultimo_entrenamiento.json")
+
+          ruta.write_text(
+              json.dumps(registro, indent=4),
+              encoding="utf-8"
+          )
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+
+          api.upload_file(
+              path_or_fileobj=str(ruta),
+              path_in_repo="ultimo_entrenamiento.json",
+              repo_id=os.environ["HF_REPO_ID"],
+              repo_type="model",
+              commit_message="Register successful retraining"
+          )
+          PY
