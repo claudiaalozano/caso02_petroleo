@@ -67,9 +67,13 @@ def preparar_variables(datos):
 # 3. DIVISION CRONOLOGICA
 # ==========================================
 
-def obtener_limites(df, train_ratio=0.70, val_ratio=0.15):
+def obtener_limites(df, train_ratio=0.60, val_ratio=0.20):
     """
-    Calcula los límites temporales de los conjuntos.
+    División cronológica de los datos:
+
+    - 60% entrenamiento
+    - 20% validación
+    - 20% test
     """
 
     n = len(df)
