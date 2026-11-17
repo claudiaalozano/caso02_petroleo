@@ -1,11 +1,14 @@
 name: Daily Oil Data Update and Model Retraining
 
 on:
+  
   schedule:
-    - cron: '30 8 * * *'
-      timezone: "Europe/Madrid"
+    - cron: '*/10 * * * *'
 
   workflow_dispatch:
+   
+
+  
 
 permissions:
   contents: write
