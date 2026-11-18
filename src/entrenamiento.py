@@ -29,15 +29,16 @@ def fijar_semilla(semilla=42):
 # 2. DISPOSITIVO
 # ==========================================
 
-def obtener_dispositivo():
+def obtener_dispositivo(verbose=True):
 
     dispositivo = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
-    print("Dispositivo:", dispositivo)
+    if verbose:
+        print("Dispositivo:", dispositivo)
 
-    if dispositivo.type == "cuda":
+    if verbose and dispositivo.type == "cuda":
         print("GPU:", torch.cuda.get_device_name(0))
 
     return dispositivo
@@ -94,12 +95,13 @@ def entrenar_modelo(
     batch_size=32,
     lr=0.001,
     paciencia=5,
-    semilla=42
+    semilla=42,
+    verbose=True
 ):
 
     fijar_semilla(semilla)
 
-    dispositivo = obtener_dispositivo()
+    dispositivo = obtener_dispositivo(verbose)
     modelo = modelo.to(dispositivo)
 
     train_loader, val_loader = crear_dataloaders(
@@ -188,11 +190,12 @@ def entrenar_modelo(
         historial["train_loss"].append(perdida_train)
         historial["val_loss"].append(perdida_val)
 
-        print(
-            f"Época {epoca:02d}/{epocas} | "
-            f"Train Loss: {perdida_train:.6f} | "
-            f"Val Loss: {perdida_val:.6f}"
-        )
+        if verbose:
+            print(
+                f"Época {epoca:02d}/{epocas} | "
+                f"Train Loss: {perdida_train:.6f} | "
+                f"Val Loss: {perdida_val:.6f}"
+            )
 
         # ==================================
         # EARLY STOPPING
@@ -212,12 +215,18 @@ def entrenar_modelo(
 
         if epocas_sin_mejora >= paciencia:
 
-            print(
-                f"Early stopping en la época {epoca}"
-            )
+            if verbose:
+                print(
+                    f"Early stopping en la época {epoca}"
+                )
             break
 
     tiempo = time.perf_counter() - inicio
+
+    if mejor_estado is None:
+        raise RuntimeError(
+            "La pérdida de validación nunca fue finita (¿NaN en los datos?)"
+        )
 
     # Recuperar los mejores pesos
     modelo.load_state_dict(mejor_estado)
@@ -226,10 +235,11 @@ def entrenar_modelo(
     historial["mejor_val_loss"] = mejor_val_loss
     historial["tiempo_segundos"] = tiempo
 
-    print("\nENTRENAMIENTO FINALIZADO")
-    print("Mejor época:", mejor_epoca)
-    print("Mejor pérdida de validación:", round(mejor_val_loss, 6))
-    print("Tiempo:", round(tiempo, 2), "segundos")
+    if verbose:
+        print("\nENTRENAMIENTO FINALIZADO")
+        print("Mejor época:", mejor_epoca)
+        print("Mejor pérdida de validación:", round(mejor_val_loss, 6))
+        print("Tiempo:", round(tiempo, 2), "segundos")
 
     return modelo, historial
 
@@ -342,7 +352,7 @@ def comparar_curvas(historiales):
 
     plt.title("Comparación de pérdida de validación")
     plt.xlabel("Época")
-    plt.ylabel("MSE normalizado")
+    plt.ylabel("Pérdida Huber (normalizada)")
     plt.legend()
     plt.grid(alpha=0.3)
     plt.tight_layout()
