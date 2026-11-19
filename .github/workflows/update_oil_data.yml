@@ -3,7 +3,7 @@ name: Daily Oil Data Update and Model Retraining
 on:
   
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 8 * * *'
 
   workflow_dispatch:
    
