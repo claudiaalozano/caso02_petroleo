@@ -1,0 +1,89 @@
+{
+    "fecha_reentrenamiento": "prueba_ciega_2026-11-19",
+    "fecha_corte": "2026-11-18",
+    "tipo_prueba": "prospectiva exploratoria h1 h2 (sin validación previa de estas redes)",
+    "ultima_fecha_datos": "2026-11-18",
+    "dataset_sha256": "55a2b4352c6c040e93a34e999fe5a5b8c35754c3dbec78c5bb48c39af2b844df",
+    "entrenamiento": "histórico hasta el 18/11/2026 (épocas elegidas en el último 10 %)",
+    "objetivo": "retorno",
+    "descripcion_objetivo": "log(Brent_{t+h}/Brent_t); precio = Brent_t * exp(pred)",
+    "combinacion": {
+        "Comb. redes": "media de los log-retornos de RNN, LSTM y GRU"
+    },
+    "prediccion_principal": {
+        "1": "Comb. redes",
+        "2": "Comb. redes"
+    },
+    "intervalo": "cuantiles (0.1, 0.9) del retorno histórico a h días anterior al corte, estandarizado por la volatilidad prevista para el horizonte (EWMA λ=0,94 con vuelta a la media φ=0,99) y aplicado con la volatilidad actual; ver src/incertidumbre.py",
+    "scaler_y": "dict {horizonte: StandardScaler}",
+    "modelos": [
+        "RNN",
+        "LSTM",
+        "GRU"
+    ],
+    "horizontes": [
+        1,
+        2
+    ],
+    "ventana": 60,
+    "variables": [
+        "r_brent",
+        "r_wti",
+        "r_gas_natural",
+        "r_usd_por_eur",
+        "r_cny_por_usd",
+        "r_indice_dolar",
+        "r_oro",
+        "r_cobre",
+        "d_tipo_bce",
+        "log_vix",
+        "brent_vs_ma20",
+        "brent_vs_ma60",
+        "brent_vs_ma250",
+        "brent_vol_20",
+        "spread_brent_wti"
+    ],
+    "numero_variables": 15,
+    "configuracion": {
+        "hidden_size_1": 32,
+        "hidden_size_2": 16,
+        "dropout": 0.2,
+        "epocas": 30,
+        "batch_size": 32,
+        "lr": 0.001,
+        "paciencia": 5,
+        "delta": 0.5,
+        "semillas": [
+            0,
+            1,
+            2
+        ]
+    },
+    "funcion_perdida": "HuberLoss",
+    "archivos": [
+        "rnn_h1_s0.pth",
+        "rnn_h1_s1.pth",
+        "rnn_h1_s2.pth",
+        "lstm_h1_s0.pth",
+        "lstm_h1_s1.pth",
+        "lstm_h1_s2.pth",
+        "gru_h1_s0.pth",
+        "gru_h1_s1.pth",
+        "gru_h1_s2.pth",
+        "rnn_h2_s0.pth",
+        "rnn_h2_s1.pth",
+        "rnn_h2_s2.pth",
+        "lstm_h2_s0.pth",
+        "lstm_h2_s1.pth",
+        "lstm_h2_s2.pth",
+        "gru_h2_s0.pth",
+        "gru_h2_s1.pth",
+        "gru_h2_s2.pth",
+        "scaler_X.pkl",
+        "scaler_y.pkl",
+        "metricas.csv",
+        "predicciones.csv",
+        "historiales.json",
+        "configuracion.json"
+    ]
+}
