@@ -1,0 +1,590 @@
+
+import { useEffect, useState } from 'react';
+import {
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
+  ReferenceLine, ResponsiveContainer, Scatter, ScatterChart,
+  Tooltip, XAxis, YAxis
+} from 'recharts';
+
+type Punto = {
+  fecha: string;
+  real: number;
+  predicho: number;
+  ingenuo: number;
+  residuo: number;
+};
+
+type DatosModelo = {
+  objetivo: string;
+  horizonte: number;
+  modelo: string;
+  n: number;
+  metricas: {
+    MAE: number;
+    RMSE: number;
+    R2: number;
+    Skill: number | null;
+    Sesgo: number;
+    Acierto_direccional: number;
+    AUC_direccion: number | null;
+  };
+  regresion: {
+    pendiente: number;
+    intercepto: number;
+  };
+  roc: { fpr: number; tpr: number }[];
+  puntos: Punto[];
+};
+
+type DatosEvaluacion = Record<string, Record<string, DatosModelo>>;
+
+const GOLD = '#c3a777';
+const GREY = '#89969a';
+const GREEN = '#7eaa97';
+const GRID = '#303638';
+
+const fmt = (v: number | null | undefined, decimals = 2) =>
+  v == null || !Number.isFinite(v)
+    ? '—'
+    : v.toLocaleString('es-ES', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+
+const axisStyle = {
+  fill: '#899396',
+  fontSize: 10,
+};
+
+const chartStyle = {
+  width: '100%',
+  height: 340,
+};
+
+function ChartPanel({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function Evaluation() {
+  const [datos, setDatos] = useState<DatosEvaluacion | null>(null);
+  const [error, setError] = useState('');
+  const [objetivo, setObjetivo] = useState('retorno');
+  const [horizonte, setHorizonte] = useState('5');
+  const [modelo, setModelo] = useState('RNN');
+
+  useEffect(() => {
+    let activo = true;
+
+    fetch(`${import.meta.env.BASE_URL}datos/evaluacion.json`, {
+      cache: 'no-cache'
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error('No se encuentra evaluacion.json');
+        return r.json();
+      })
+      .then((json: DatosEvaluacion) => {
+        if (activo) setDatos(json);
+      })
+      .catch((e) => {
+        if (activo) setError(String(e));
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div className="panel">
+        <h2>No se pueden cargar las evaluaciones</h2>
+        <p className="source-note">{error}</p>
+      </div>
+    );
+  }
+
+  if (!datos) {
+    return <div className="loading-state">Cargando evaluaciones…</div>;
+  }
+
+  const grupo = datos[`${objetivo}_${horizonte}`];
+  const elegido = grupo?.[modelo];
+
+  if (!elegido) {
+    return (
+      <div className="panel">
+        <p>No existen resultados para esta combinación.</p>
+      </div>
+    );
+  }
+
+  const metricas = elegido.metricas;
+  const puntos = elegido.puntos;
+  const paso = Math.max(1, Math.ceil(puntos.length / 220));
+  const muestra = puntos.filter((_, i) => i % paso === 0);
+
+  const precios = puntos.flatMap((p) => [p.real, p.predicho]);
+  const minimo = Math.min(...precios);
+  const maximo = Math.max(...precios);
+
+  const recta = elegido.regresion;
+
+  // Se calcula un histograma con TODOS los residuos.
+  const residuos = puntos.map((p) => p.residuo);
+  const rMin = Math.min(...residuos);
+  const rMax = Math.max(...residuos);
+  const numBarras = 24;
+  const amplitud = (rMax - rMin || 1) / numBarras;
+
+  const histograma = Array.from(
+    { length: numBarras },
+    (_, i) => ({
+      intervalo: fmt(rMin + (i + 0.5) * amplitud, 1),
+      frecuencia: 0,
+    })
+  );
+
+  for (const r of residuos) {
+    const indice = Math.min(
+      numBarras - 1,
+      Math.max(0, Math.floor((r - rMin) / amplitud))
+    );
+    histograma[indice].frecuencia++;
+  }
+
+  const tarjetas = [
+    { nombre: 'MAE', valor: fmt(metricas.MAE), unidad: 'USD' },
+    { nombre: 'RMSE', valor: fmt(metricas.RMSE), unidad: 'USD' },
+    { nombre: 'R²', valor: fmt(metricas.R2, 3), unidad: '' },
+    {
+      nombre: 'Skill vs. ingenuo',
+      valor: metricas.Skill == null
+        ? '—'
+        : `${fmt(metricas.Skill * 100, 1)} %`,
+      unidad: ''
+    },
+    { nombre: 'Sesgo', valor: fmt(metricas.Sesgo), unidad: 'USD' },
+    {
+      nombre: 'AUC direccional',
+      valor: fmt(metricas.AUC_direccion, 3),
+      unidad: ''
+    },
+  ];
+
+  return (
+    <div className="page-stack">
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <div className="eyebrow">ANÁLISIS DEL TEST FINAL</div>
+            <h2>¿Qué tan bien predicen nuestras redes?</h2>
+            <p>
+              Evaluación sobre observaciones reservadas,
+              separada del entrenamiento y de las predicciones futuras.
+            </p>
+          </div>
+        </div>
+
+        <div className="filters">
+          <label>
+            Modelo
+            <select
+              value={modelo}
+              onChange={(e) => setModelo(e.target.value)}
+            >
+              <option value="RNN">RNN</option>
+              <option value="LSTM">LSTM</option>
+              <option value="GRU">GRU</option>
+            </select>
+          </label>
+
+          <label>
+            Horizonte
+            <select
+              value={horizonte}
+              onChange={(e) => setHorizonte(e.target.value)}
+            >
+              <option value="5">5 días</option>
+              <option value="63">63 días</option>
+              <option value="252">252 días</option>
+            </select>
+          </label>
+
+          <label>
+            Objetivo
+            <select
+              value={objetivo}
+              onChange={(e) => setObjetivo(e.target.value)}
+            >
+              <option value="retorno">RETORNO</option>
+              <option value="nivel">NIVEL</option>
+            </select>
+          </label>
+        </div>
+
+        <p className="source-note">
+          Modelo: {modelo} · Horizonte: {horizonte} días ·
+          Objetivo: {objetivo.toUpperCase()} ·
+          Observaciones evaluadas: {elegido.n}
+        </p>
+
+        <div className="evaluation-metrics-grid">
+          {tarjetas.map((t) => (
+            <article className="stat-card" key={t.nombre}>
+              <span>{t.nombre}</span>
+              <h3 style={{ fontSize: 23 }}>
+                {t.valor}
+                <small>{t.unidad}</small>
+              </h3>
+            </article>
+          ))}
+        </div>
+
+        <p className="source-note">
+          MAE y RMSE: cuanto menores, mejor. Skill positivo:
+          mejora frente al ingenuo. La AUC evalúa únicamente
+          la dirección subida/no subida, no el error del precio.
+        </p>
+      </section>
+
+      {/* TABLA COMPARATIVA DE ERRORES */}
+      <ChartPanel
+        title="Tabla de errores"
+        subtitle={`Test final · ${horizonte} días · ${objetivo.toUpperCase()}`}
+      >
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Modelo</th>
+                <th>MAE</th>
+                <th>RMSE</th>
+                <th>R²</th>
+                <th>Skill</th>
+                <th>Sesgo</th>
+                <th>Acierto dir.</th>
+                <th>AUC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {['RNN', 'LSTM', 'GRU'].map((m) => {
+                const d = grupo[m];
+                if (!d) return null;
+                const v = d.metricas;
+
+                return (
+                  <tr
+                    key={m}
+                    className={modelo === m ? 'best-row' : ''}
+                    onClick={() => setModelo(m)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td>{m}</td>
+                    <td>{fmt(v.MAE)}</td>
+                    <td>{fmt(v.RMSE)}</td>
+                    <td>{fmt(v.R2, 3)}</td>
+                    <td>
+                      {v.Skill == null
+                        ? '—'
+                        : `${fmt(v.Skill * 100, 1)} %`}
+                    </td>
+                    <td>{fmt(v.Sesgo)}</td>
+                    <td>{fmt(v.Acierto_direccional, 1)} %</td>
+                    <td>{fmt(v.AUC_direccion, 3)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="source-note">
+          Haz clic en una fila para cambiar el modelo seleccionado.
+          Métricas calculadas a partir de las predicciones guardadas
+          del test final.
+        </p>
+      </ChartPanel>
+
+      {/* NUBE DE PUNTOS Y RECTA DE REGRESIÓN */}
+      <ChartPanel
+        title="Precio real frente a precio predicho"
+        subtitle="Diagonal ideal y ajuste lineal descriptivo"
+      >
+        <div style={chartStyle}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart
+              margin={{ top: 20, right: 25, left: 10, bottom: 15 }}
+            >
+              <CartesianGrid stroke={GRID} strokeDasharray="3 5" />
+
+              <XAxis
+                type="number"
+                dataKey="real"
+                name="Precio real"
+                domain={[minimo, maximo]}
+                tick={axisStyle}
+                tickFormatter={(v) => `$${fmt(v, 0)}`}
+              />
+
+              <YAxis
+                type="number"
+                dataKey="predicho"
+                name="Precio predicho"
+                domain={[minimo, maximo]}
+                tick={axisStyle}
+                tickFormatter={(v) => `$${fmt(v, 0)}`}
+              />
+
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                formatter={(value) => fmt(Number(value))}
+              />
+
+              <ReferenceLine
+                segment={[
+                  { x: minimo, y: minimo },
+                  { x: maximo, y: maximo }
+                ]}
+                stroke={GREEN}
+                strokeDasharray="5 5"
+                strokeWidth={2}
+              />
+
+              <ReferenceLine
+                segment={[
+                  {
+                    x: minimo,
+                    y: recta.pendiente * minimo + recta.intercepto
+                  },
+                  {
+                    x: maximo,
+                    y: recta.pendiente * maximo + recta.intercepto
+                  }
+                ]}
+                stroke={GOLD}
+                strokeWidth={2}
+              />
+
+              <Scatter
+                name="Predicciones"
+                data={muestra}
+                fill={GREY}
+                fillOpacity={0.65}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+
+        <p className="source-note">
+          Cada punto representa una predicción del test. La diagonal
+          verde representa predicción perfecta (y = x). La recta
+          dorada es un ajuste lineal descriptivo de los puntos;
+          no es un nuevo modelo entrenado para predecir el Brent.
+          Se muestra una muestra de puntos para mejorar la legibilidad.
+        </p>
+      </ChartPanel>
+
+      {/* EVOLUCIÓN TEMPORAL */}
+      <ChartPanel
+        title="Evolución temporal"
+        subtitle="Precio real, predicción neuronal y referencia ingenua"
+      >
+        <div style={chartStyle}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={muestra}
+              margin={{ top: 15, right: 25, left: 5, bottom: 10 }}
+            >
+              <CartesianGrid
+                vertical={false}
+                stroke={GRID}
+                strokeDasharray="3 5"
+              />
+              <XAxis
+                dataKey="fecha"
+                tick={axisStyle}
+                minTickGap={35}
+              />
+              <YAxis
+                tick={axisStyle}
+                tickFormatter={(v) => `$${fmt(v, 0)}`}
+                domain={['auto', 'auto']}
+              />
+              <Tooltip
+                formatter={(v) => `${fmt(Number(v))} USD`}
+              />
+              <Legend />
+              <Line
+                type="linear"
+                dataKey="real"
+                name="Brent real"
+                stroke={GREY}
+                strokeWidth={1.8}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="linear"
+                dataKey="predicho"
+                name={modelo}
+                stroke={GOLD}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="linear"
+                dataKey="ingenuo"
+                name="Ingenuo"
+                stroke={GREEN}
+                strokeDasharray="4 4"
+                strokeWidth={1.2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="source-note">
+          Se representan observaciones del test con una selección
+          regular de puntos para facilitar la visualización.
+        </p>
+      </ChartPanel>
+
+      {/* HISTOGRAMA DE RESIDUOS */}
+      <ChartPanel
+        title="Distribución de los errores"
+        subtitle="Residuo = precio real − precio predicho"
+      >
+        <div style={chartStyle}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={histograma}
+              margin={{ top: 15, right: 25, left: 0, bottom: 15 }}
+            >
+              <CartesianGrid
+                vertical={false}
+                stroke={GRID}
+                strokeDasharray="3 5"
+              />
+              <XAxis
+                dataKey="intervalo"
+                tick={axisStyle}
+                interval={3}
+              />
+              <YAxis
+                tick={axisStyle}
+                allowDecimals={false}
+              />
+              <Tooltip />
+              <Bar
+                dataKey="frecuencia"
+                name="Observaciones"
+                fill={GOLD}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="source-note">
+          Los errores cercanos a cero indican predicciones más
+          precisas. Los valores extremos representan errores grandes.
+          El histograma utiliza todas las observaciones disponibles.
+        </p>
+      </ChartPanel>
+
+      {/* CURVA ROC */}
+      <ChartPanel
+        title={`Curva ROC · ${modelo}`}
+        subtitle="Evaluación secundaria de la dirección del precio"
+      >
+        {elegido.roc.length > 0 ? (
+          <>
+            <div style={chartStyle}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={elegido.roc}
+                  margin={{
+                    top: 20,
+                    right: 25,
+                    left: 10,
+                    bottom: 20
+                  }}
+                >
+                  <CartesianGrid
+                    stroke={GRID}
+                    strokeDasharray="3 5"
+                  />
+                  <XAxis
+                    type="number"
+                    dataKey="fpr"
+                    domain={[0, 1]}
+                    tick={axisStyle}
+                    tickFormatter={(v) => fmt(v, 1)}
+                  />
+                  <YAxis
+                    type="number"
+                    domain={[0, 1]}
+                    tick={axisStyle}
+                    tickFormatter={(v) => fmt(v, 1)}
+                  />
+                  <Tooltip
+                    formatter={(v) => fmt(Number(v), 3)}
+                  />
+
+                  <ReferenceLine
+                    segment={[
+                      { x: 0, y: 0 },
+                      { x: 1, y: 1 }
+                    ]}
+                    stroke={GREY}
+                    strokeDasharray="5 5"
+                  />
+
+                  <Line
+                    type="linear"
+                    dataKey="tpr"
+                    name="Sensibilidad"
+                    stroke={GOLD}
+                    strokeWidth={2.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <p className="source-note">
+              AUC = {fmt(metricas.AUC_direccion, 3)}.
+              La curva mide la discriminación entre subida y no
+              subida utilizando la variación predicha. Una AUC
+              cercana a 0,5 indica escasa discriminación.
+              La ROC no mide el error del precio estimado.
+            </p>
+          </>
+        ) : (
+          <p className="source-note">
+            No hay ambas clases en este subconjunto;
+            la curva ROC no está definida.
+          </p>
+        )}
+      </ChartPanel>
+    </div>
+  );
+}

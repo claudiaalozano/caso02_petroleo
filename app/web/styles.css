@@ -37,3 +37,40 @@
 
 /* Prueba a ciegas: componentes del diseño original BRENT. */
 .blind-panel{padding:30px}.blind-panel .panel-heading h2{font-family:Georgia,serif;font-weight:400;font-size:29px;color:#e9e6dd}.blind-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:24px 0 18px}.blind-controls label{display:inline-flex;gap:7px;color:#aeb8b2;font-size:11px;align-items:center}.blind-controls input{accent-color:#c3a777}.blind-chart{width:100%;height:375px;margin-bottom:14px}.blind-legend{display:flex;flex-wrap:wrap;gap:20px;font-size:11px;color:#a7b0ab}.blind-legend span{display:flex;align-items:center;gap:7px}.blind-legend i{display:inline-block;width:18px;height:3px}.blind-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;margin-top:28px}.blind-stat{border:1px solid #394139;background:#121a1c;border-radius:9px;padding:23px}.blind-stat small{font-size:10px;letter-spacing:1px;color:#c7a878}.blind-stat strong{display:block;font-size:32px;color:#f3efe8;line-height:1.8}.blind-stat strong span{font-size:12px;color:#8e9b95}.blind-stat p{font-size:11px;color:#aeb7b1;line-height:1.7;margin:7px 0}.blind-stat .gold-text{color:#c3a777}@media(max-width:680px){.blind-grid{grid-template-columns:1fr}.blind-chart{height:290px}.blind-panel{padding:16px}.blind-controls{gap:10px}}
+
+
+/* EVALUACIÓN DE MODELOS */
+.evaluation-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+
+.evaluation-metrics-grid .stat-card {
+  min-width: 0;
+  min-height: 125px;
+  padding: 18px 12px;
+}
+
+.evaluation-metrics-grid .stat-card h3 {
+  font-size: clamp(16px, 1.4vw, 24px) !important;
+  letter-spacing: -0.6px;
+  white-space: nowrap;
+}
+
+.evaluation-metrics-grid .stat-card h3 small {
+  font-size: 10px;
+}
+
+@media (max-width: 1250px) {
+  .evaluation-metrics-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .evaluation-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
