@@ -35676,5 +35676,14 @@
   "reentrenamiento": "19_11_2026",
   "fuente": "CSV del proyecto · FRED / EIA",
   "fuenteMetricas": "Salidas ejecutadas de analisis_petroleo.ipynb; cifras redondeadas del cuaderno.",
-  "horaActualizacion": null
+  "horaActualizacion": null,
+  "cotizacionHoy": {
+    "fecha": "2026-11-20",
+    "hora": "08:20",
+    "precio": 92.57,
+    "moneda": "USD",
+    "tipo": "Futuros Brent · intradía",
+    "fuente": "Reuters",
+    "url": "https://www.reuters.com/business/energy/oil-prices-edge-higher-houthi-attacks-riyadh-raise-supply-concerns-2026-11-20/"
+  }
 }

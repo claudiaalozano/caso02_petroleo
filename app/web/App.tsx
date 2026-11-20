@@ -376,6 +376,20 @@ export default function App() {
     document.addEventListener('keydown', trap);
     return () => { document.body.style.overflow = originalOverflow; document.removeEventListener('keydown', trap); previous?.focus(); };
   }, [sourcesOpen]);
+
+  const cotizacionHoy = (
+    data as (Data & {
+      cotizacionHoy?: {
+        fecha: string;
+        hora: string;
+        precio: number;
+        moneda: string;
+        tipo: string;
+        fuente: string;
+        url: string;
+      };
+    }) | null
+  )?.cotizacionHoy;
   const current = data?.historico.at(-1);
   const previous = data?.historico.at(-2);
   const daily = current && previous ? (current.precio / previous.precio - 1) * 100 : 0;
@@ -402,6 +416,69 @@ export default function App() {
       {error ? <section className="panel error-panel"><Empty text="Datos no disponibles" detail="No se ha podido cargar el archivo de datos del proyecto." /><button className="primary-button" onClick={() => void load()}>Volver a intentar<RefreshCw size={14} /></button></section> : !data ? <div className="loading-state" role="status"><span className="loading-ring" />Preparando tu perspectiva de mercado…</div> : <div key={page} className="page-enter">
       {page === 'resumen' && <>
         <div className="market-heading"><div><span className="market-symbol"><span />B</span><div><h2>Petróleo Brent <span className="small-tag">USD / BARRIL</span></h2><p>Referencia mundial de la energía</p></div></div><span className="market-date"><Clock3 size={12} />Último dato · {dateLabel(current!.fecha, true)}</span></div>
+
+        {cotizacionHoy && (
+          <section className="panel" style={{
+            marginBottom: 23,
+            padding: '20px 24px',
+            borderColor: '#50442f'
+          }}>
+            <div className="eyebrow">
+              COTIZACIÓN DEL DÍA · BRENT
+            </div>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 20,
+              marginTop: 12
+            }}>
+              <div>
+                <div style={{
+                  fontSize: 34,
+                  fontWeight: 500,
+                  color: '#e5d3af'
+                }}>
+                  {number(cotizacionHoy.precio)}
+                  <span style={{
+                    fontSize: 13,
+                    marginLeft: 8,
+                    color: '#96a3a5'
+                  }}>
+                    USD/barril
+                  </span>
+                </div>
+
+                <p className="source-note" style={{ marginTop: 3 }}>
+                  {dateLabel(cotizacionHoy.fecha, true)}
+                  {' · '}
+                  {cotizacionHoy.hora} h (Madrid)
+                  {' · '}
+                  {cotizacionHoy.tipo}
+                </p>
+              </div>
+
+              <a
+                href={cotizacionHoy.url}
+                target="_blank"
+                rel="noreferrer"
+                className="outline-button"
+              >
+                Fuente: {cotizacionHoy.fuente}
+                <ArrowUpRight size={14} />
+              </a>
+            </div>
+
+            <p className="source-note">
+              Cotización intradía a la hora indicada, no precio
+              de cierre ni cotización en tiempo real.
+              Las predicciones mantienen su fecha de origen original.
+            </p>
+          </section>
+        )}
+
         <div className="stats-row">
           <article className="stat-card price-card"><span>Precio del Brent <Info size={12}><title>Último precio del CSV, no una cotización en tiempo real</title></Info></span><h3>{number(current!.precio)}<small> USD</small></h3><p><span className={daily >= 0 ? 'positive' : 'negative'}><ArrowUpRight size={13} />{daily > 0 ? '+' : ''}{number(daily)} %</span><span>respecto al día anterior</span></p><svg className="stat-sparkline" viewBox="0 0 140 55" aria-label="Últimas 22 observaciones"><polyline fill="none" stroke="#4bae91" strokeWidth="1.5" points={data.historico.slice(-22).map((p, i, a) => `${i / 21 * 140},${50 - (p.precio - Math.min(...a.map(v => v.precio))) / (Math.max(...a.map(v => v.precio)) - Math.min(...a.map(v => v.precio)) || 1) * 40}`).join(' ')} /></svg></article>
           <article className="stat-card"><span>Rango de las últimas 52 semanas<ChartNoAxesCombined size={14} /></span><h3>{number(annualMin)}<em> — </em>{number(annualMax)}</h3><div className="range-track"><i style={{ left: `${rangePosition}%` }} /></div><p className="justify-between"><span>Mínimo anual</span><span>Máximo anual</span></p></article>
