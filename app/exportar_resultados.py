@@ -12,7 +12,7 @@ if 'tabla_test' not in globals():
     raise RuntimeError('Ejecuta primero la celda que crea tabla_test.')
 
 raiz_export = Path(RAIZ) if 'RAIZ' in globals() else Path.cwd()
-salida_export = raiz_export / 'docs' / 'resultados.json'
+salida_export = raiz_export / 'app' / 'resultados.json'
 salida_export.parent.mkdir(parents=True, exist_ok=True)
 
 resultado_export = {}

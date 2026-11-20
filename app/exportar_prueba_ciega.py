@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 import pandas as pd
 
-RAIZ = Path(__file__).resolve().parent
+RAIZ = Path(__file__).resolve().parent.parent
 BASE = RAIZ / "resultados" / "prueba_ciega_2026-11-19"
 HIST = BASE / "datos_congelados.csv"
 PRED = BASE / "redes_h1_h2" / "predicciones.csv"
-SALIDA = RAIZ / "docs" / "prueba_ciega.json"
+SALIDA = RAIZ / "app" / "prueba_ciega.json"
 
 for f in (HIST, PRED):
     if not f.is_file():
