@@ -32992,7 +32992,20 @@
         "superior": 100.68795255208924
       }
     ],
-    "observaciones": []
+    "observaciones": [
+      {
+        "fecha": "2026-11-19",
+        "precio": 91.98,
+        "tipo": "Futuro Brent - cierre diario",
+        "fuente": "https://www.investing.com/commodities/brent-oil-historical-data"
+      },
+      {
+        "fecha": "2026-11-20",
+        "precio": 90.81,
+        "tipo": "Futuro Brent - provisional",
+        "fuente": "https://www.investing.com/commodities/brent-oil-historical-data"
+      }
+    ]
   },
   "metricas": [
     {
