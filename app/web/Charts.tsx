@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceDot } from 'recharts';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import type { Price, Scenario } from './types';
 
@@ -74,4 +74,163 @@ export function LearningChart({ train, val, naive }: { train: number[]; val: num
     <Line dataKey="val" stroke="#c3a777" dot={false} strokeWidth={1.8} />
     <Line dataKey="ingenuo" stroke="#7f8582" dot={false} strokeDasharray="5 5" />
   </ComposedChart></ResponsiveContainer></div>;
+}
+
+
+// ==========================================================
+// GRÁFICO DE PREDICCIÓN RNN, LSTM Y GRU
+// ==========================================================
+
+export function ModelForecastChart({
+  history,
+  model,
+  prediction,
+  date,
+  lower,
+  upper,
+}: {
+  history: Price[];
+  model: string;
+  prediction: number;
+  date: string;
+  lower: number | null;
+  upper: number | null;
+}) {
+  const past = history.slice(-25);
+  const origin = past.at(-1);
+
+  if (!origin || !Number.isFinite(prediction)) {
+    return null;
+  }
+
+  const targetDate = date.slice(0, 10);
+
+  const points: {
+    fecha: string;
+    precio?: number;
+    proyeccion?: number;
+  }[] = past.map((p) => ({
+    fecha: p.fecha,
+    precio: p.precio,
+    proyeccion:
+      p.fecha === origin.fecha ? p.precio : undefined,
+  }));
+
+  points.push({
+    fecha: targetDate,
+    proyeccion: prediction,
+  });
+
+  const bounds = [lower, upper].filter(
+    (v): v is number =>
+      v !== null && Number.isFinite(v)
+  );
+
+  const values = [
+    ...past.map((p) => p.precio),
+    prediction,
+    ...bounds,
+  ];
+
+  const min = Math.floor(Math.min(...values) - 2);
+  const max = Math.ceil(Math.max(...values) + 2);
+
+  return (
+    <div style={{ width: '100%', height: 370 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={points}
+          margin={{
+            top: 20,
+            right: 28,
+            left: 0,
+            bottom: 10,
+          }}
+        >
+          <CartesianGrid
+            vertical={false}
+            stroke="#252a2c"
+            strokeDasharray="3 5"
+          />
+
+          <XAxis
+            dataKey="fecha"
+            tick={axis}
+            tickFormatter={(s) => dateLabel(s)}
+            tickLine={false}
+            axisLine={false}
+            minTickGap={45}
+          />
+
+          <YAxis
+            domain={[min, max]}
+            tick={axis}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `$${number(v, 0)}`}
+          />
+
+          <Tooltip content={<ChartTooltip />} />
+
+          <Line
+            dataKey="precio"
+            name="Brent histórico"
+            stroke="#89969a"
+            strokeWidth={1.8}
+            dot={false}
+            isAnimationActive={false}
+          />
+
+          <Line
+            dataKey="proyeccion"
+            name={`Predicción ${model}`}
+            stroke="#c3a777"
+            strokeWidth={2.2}
+            strokeDasharray="5 4"
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+
+          <ReferenceLine
+            x={origin.fecha}
+            stroke="#5e6869"
+            strokeDasharray="3 4"
+          />
+
+          {lower !== null &&
+            upper !== null &&
+            Number.isFinite(lower) &&
+            Number.isFinite(upper) && (
+              <ReferenceLine
+                segment={[
+                  { x: targetDate, y: lower },
+                  { x: targetDate, y: upper },
+                ]}
+                stroke="#c3a777"
+                strokeWidth={3}
+                strokeOpacity={0.8}
+              />
+            )}
+
+          <ReferenceDot
+            x={targetDate}
+            y={prediction}
+            r={7}
+            fill="#c3a777"
+            stroke="#13171a"
+            strokeWidth={2}
+            isFront
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      <p className="source-note">
+        Punto dorado: predicción {model}.
+        La línea discontinua es una conexión visual,
+        no una trayectoria diaria estimada.
+        El intervalo del 80 % es nominal.
+      </p>
+    </div>
+  );
 }

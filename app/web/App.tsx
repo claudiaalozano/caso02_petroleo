@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, CircleHelp, Clock3, Database, Ellipsis, Globe2, History, Info, Layers3, LayoutDashboard, Menu, RefreshCw, ShieldCheck, Sparkles, TrendingUp, X } from 'lucide-react';
-import { HistoryChart, LearningChart, ScenarioChart, dateLabel, number } from './Charts';
+import { ModelForecastChart, HistoryChart, LearningChart, ScenarioChart, dateLabel, number } from './Charts';
 import { BlindTest } from './BlindTest';
 import type { Data, Row } from './types';
 
@@ -43,25 +43,249 @@ function Tag({ children, green = false }: { children: React.ReactNode; green?: b
 function SectionLink({ to, children }: { to: string; children: React.ReactNode }) { return <a className="text-link" href={`#${to}`}>{children}<ArrowUpRight size={15} /></a>; }
 function InfoNote({ children }: { children: React.ReactNode }) { return <div className="info-note"><Info size={15} /><p>{children}</p></div>; }
 
-function Forecast({ data, full = false }: { data: Data; full?: boolean }) {
+
+// ==========================================================
+// PREDICCIONES IA: RNN, LSTM, GRU E INGENUO
+// ==========================================================
+
+function Forecast({
+  data,
+  full = false,
+}: {
+  data: Data;
+  full?: boolean;
+}) {
   const [horizon, setHorizon] = useState('5');
   const [model, setModel] = useState('Ingenuo');
   const [target, setTarget] = useState('retorno');
+
   const current = data.historico.at(-1)!;
   const scenario = data.escenarios[horizon];
-  const publication = data.predicciones.find(r => r.Horizonte === Number(horizon) && r.Modelo === model && r.Objetivo === target && r['Fecha origen'] === current.fecha);
-  const prediction = model === 'Ingenuo' ? current.precio : publication ? Number(publication['Brent predicho']) : null;
-  const change = prediction === null ? null : (prediction / current.precio - 1) * 100;
-  return <section className={`panel forecast-panel ${full ? 'forecast-full' : ''}`}>
-    <div className="panel-heading"><div><div className="eyebrow"><Sparkles size={13} />INTELIGENCIA PREDICTIVA</div><h2>Una mirada al futuro.</h2></div><span className="mini-label">IA + ANÁLISIS</span></div>
-    <label className="field-label">Horizonte de predicción</label>
-    <div className="horizon-select">{['5', '63', '252'].map((h, i) => <button key={h} onClick={() => setHorizon(h)} aria-pressed={horizon === h} className={horizon === h ? 'active' : ''}><strong>{h} días</strong><span>{['Corto plazo', 'Medio plazo', 'Largo plazo'][i]}</span></button>)}</div>
-    <div className="form-row"><label>Modelo<select aria-label="Modelo predictivo" value={model} onChange={e => setModel(e.target.value)}>{['Ingenuo', 'RNN', 'LSTM', 'GRU', 'Comb. redes'].map(m => <option key={m}>{m}</option>)}</select></label>{full && <label>Objetivo<select aria-label="Objetivo predictivo" disabled={model === 'Ingenuo'} value={target} onChange={e => setTarget(e.target.value)}>{model === 'Ingenuo' ? <option value={target}>No aplica</option> : <><option value="retorno">RETORNO</option><option value="nivel">NIVEL</option></>}</select></label>}</div>
-    {prediction !== null ? <><div className="forecast-price"><span>Precio estimado <span className="gold-text">· {horizon} días bursátiles</span></span><div>{number(prediction)}<small> USD</small></div><span className="forecast-change"><TrendingUp size={13} />{change! > 0 ? '+' : ''}{number(change!)} % <span>respecto al precio actual</span></span></div><div className="prediction-meta"><span>Fecha objetivo aproximada</span><strong>{dateLabel(scenario.at(-1)!.fecha)}</strong></div></> : <Empty detail="Publica el resultado Python de este modelo y objetivo para consultar su predicción." />}
-    {full && <><div className="prediction-meta"><span>Precio actual</span><strong>{number(current.precio)} USD/barril</strong></div><div className="prediction-meta"><span>Último reentrenamiento</span><strong>{model === 'Ingenuo' ? 'No requiere entrenamiento' : data.reentrenamiento || 'Pendiente de actualización'}</strong></div>{model === 'Ingenuo' ? <><div className="chart-caption">Histórico real y proyección de referencia</div><ScenarioChart history={data.historico} scenarios={scenario} /></> : prediction !== null && <p className="subtle">Estimación puntual publicada: {number(prediction)} USD. Trayectoria intermedia no disponible.</p>}</>}
-    {!full && <button className="primary-button" onClick={() => go('predicciones')}>Explorar predicciones<ArrowRight size={15} /></button>}
-    <p className="fine-print"><ShieldCheck size={12} />{model === 'Ingenuo' ? 'Referencia sin cambio de precio. No es una predicción IA.' : 'Resultados sujetos a incertidumbre. No son garantías.'}</p>
-  </section>;
+
+  const publication = data.predicciones.find(
+    (r) =>
+      Number(r.Horizonte) === Number(horizon) &&
+      String(r.Modelo).trim() === model &&
+      String(r.Objetivo).trim().toLowerCase() === target &&
+      String(r['Fecha origen']).slice(0, 10) === current.fecha
+  );
+
+  const prediction = publication
+    ? Number(publication['Brent predicho'])
+    : model === 'Ingenuo'
+      ? current.precio
+      : null;
+
+  const change = prediction !== null
+    ? (prediction / current.precio - 1) * 100
+    : null;
+
+  const targetDate = publication
+    ? String(publication['Fecha objetivo (aprox.)'])
+    : scenario?.at(-1)?.fecha ?? '';
+
+  const lowerValue = publication
+    ? Number(publication['Límite inferior (80 %)'])
+    : null;
+
+  const upperValue = publication
+    ? Number(publication['Límite superior (80 %)'])
+    : null;
+
+  const lower =
+    lowerValue !== null && Number.isFinite(lowerValue)
+      ? lowerValue
+      : null;
+
+  const upper =
+    upperValue !== null && Number.isFinite(upperValue)
+      ? upperValue
+      : null;
+
+  return (
+    <section
+      className={`panel forecast-panel ${full ? 'forecast-full' : ''}`}
+    >
+      <div className="panel-heading">
+        <div>
+          <div className="eyebrow">
+            <Sparkles size={13} />
+            INTELIGENCIA PREDICTIVA
+          </div>
+          <h2>Una mirada al futuro.</h2>
+        </div>
+
+        <span className="mini-label">IA + ANÁLISIS</span>
+      </div>
+
+      <label className="field-label">
+        Horizonte de predicción
+      </label>
+
+      <div className="horizon-select">
+        {['5', '63', '252'].map((h, i) => (
+          <button
+            key={h}
+            type="button"
+            onClick={() => setHorizon(h)}
+            aria-pressed={horizon === h}
+            className={horizon === h ? 'active' : ''}
+          >
+            <strong>{h} días</strong>
+            <span>
+              {['Corto plazo', 'Medio plazo', 'Largo plazo'][i]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="form-row">
+        <label>
+          Modelo
+          <select
+            aria-label="Modelo predictivo"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          >
+            {[
+              'Ingenuo',
+              'RNN',
+              'LSTM',
+              'GRU',
+              'Comb. redes',
+            ].map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {full && (
+          <label>
+            Objetivo
+            <select
+              aria-label="Objetivo predictivo"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              disabled={model === 'Ingenuo'}
+            >
+              {model === 'Ingenuo' ? (
+                <option value="retorno">No aplica</option>
+              ) : (
+                <>
+                  <option value="retorno">RETORNO</option>
+                  <option value="nivel">NIVEL</option>
+                </>
+              )}
+            </select>
+          </label>
+        )}
+      </div>
+
+      {prediction !== null ? (
+        <>
+          <div className="forecast-price">
+            <span>
+              Precio estimado
+              <span className="gold-text">
+                {' '}· {horizon} días bursátiles
+              </span>
+            </span>
+
+            <div>
+              {number(prediction)}
+              <small> USD</small>
+            </div>
+
+            <span className="forecast-change">
+              <TrendingUp size={13} />
+              {change !== null && change > 0 ? '+' : ''}
+              {number(change ?? 0)} %
+              <span>respecto al precio actual</span>
+            </span>
+          </div>
+
+          <div className="prediction-meta">
+            <span>Fecha objetivo aproximada</span>
+            <strong>
+              {targetDate ? dateLabel(targetDate) : '—'}
+            </strong>
+          </div>
+        </>
+      ) : (
+        <Empty
+          detail="No hay predicción publicada para esta selección."
+        />
+      )}
+
+      {full && (
+        <>
+          <div className="prediction-meta">
+            <span>Precio actual</span>
+            <strong>
+              {number(current.precio)} USD/barril
+            </strong>
+          </div>
+
+          <div className="prediction-meta">
+            <span>Último reentrenamiento</span>
+            <strong>
+              {model === 'Ingenuo'
+                ? 'No requiere entrenamiento'
+                : data.reentrenamiento || 'No disponible'}
+            </strong>
+          </div>
+
+          {prediction !== null && (
+            <>
+              <div className="chart-caption">
+                Histórico real y predicción · {model} · {horizon} días
+              </div>
+
+              {model === 'Ingenuo' ? (
+                scenario?.length ? (
+                  <ScenarioChart
+                    history={data.historico}
+                    scenarios={scenario}
+                  />
+                ) : (
+                  <Empty detail="Escenarios no disponibles." />
+                )
+              ) : publication ? (
+                <ModelForecastChart
+                  history={data.historico}
+                  model={model}
+                  prediction={prediction}
+                  date={targetDate}
+                  lower={lower}
+                  upper={upper}
+                />
+              ) : null}
+            </>
+          )}
+        </>
+      )}
+
+      {!full && (
+        <button
+          type="button"
+          className="primary-button"
+          onClick={() => go('predicciones')}
+        >
+          Explorar predicciones
+          <ArrowRight size={16} />
+        </button>
+      )}
+
+      <p className="fine-print">
+        <ShieldCheck size={12} />
+        {model === 'Ingenuo'
+          ? 'Referencia sin cambio de precio. No es IA.'
+          : 'Predicciones sujetas a incertidumbre.'}
+      </p>
+    </section>
+  );
 }
 
 function MetricsTable({ data, brief = false }: { data: Data; brief?: boolean }) {
