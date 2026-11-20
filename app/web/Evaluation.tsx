@@ -1,3 +1,5 @@
+import RecentBrentComparison from "./RecentBrentComparison";
+
 
 import { useEffect, useState } from 'react';
 import {
@@ -83,7 +85,7 @@ function ChartPanel({
   );
 }
 
-export function Evaluation() {
+function OriginalEvaluation() {
   const [datos, setDatos] = useState<DatosEvaluacion | null>(null);
   const [error, setError] = useState('');
   const [objetivo, setObjetivo] = useState('retorno');
@@ -588,3 +590,16 @@ export function Evaluation() {
     </div>
   );
 }
+
+export function Evaluation(
+  
+) {
+  return (
+    <>
+      <OriginalEvaluation />
+      <RecentBrentComparison />
+    </>
+  );
+}
+
+export default Evaluation;

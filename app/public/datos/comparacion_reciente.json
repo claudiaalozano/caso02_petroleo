@@ -1,0 +1,90 @@
+{
+  "titulo": "Comparación reciente con el Brent real",
+  "objetivo": "nivel",
+  "horizonte": 5,
+  "mejorModelo": "GRU",
+  "ranking": [
+    {
+      "modelo": "GRU",
+      "mae": 4.2233,
+      "rmse": 4.3439
+    },
+    {
+      "modelo": "LSTM",
+      "mae": 6.0901,
+      "rmse": 6.1635
+    },
+    {
+      "modelo": "Combinación",
+      "mae": 7.8567,
+      "rmse": 7.9351
+    },
+    {
+      "modelo": "RNN",
+      "mae": 13.2567,
+      "rmse": 13.3471
+    }
+  ],
+  "historico": [
+    {
+      "fecha": "2026-11-05",
+      "precio": 97.96
+    },
+    {
+      "fecha": "2026-11-06",
+      "precio": 97.83
+    },
+    {
+      "fecha": "2026-11-09",
+      "precio": 91.03
+    },
+    {
+      "fecha": "2026-11-10",
+      "precio": 90.16
+    }
+  ],
+  "filas": [
+    {
+      "fecha": "2026-11-11",
+      "real": 92.14,
+      "predicciones": {
+        "RNN": 108.064,
+        "LSTM": 99.8474,
+        "GRU": 97.5436,
+        "Combinación": 101.8183
+      }
+    },
+    {
+      "fecha": "2026-11-12",
+      "real": 95.42,
+      "predicciones": {
+        "RNN": 107.8032,
+        "LSTM": 100.9649,
+        "GRU": 99.555,
+        "Combinación": 102.7744
+      }
+    },
+    {
+      "fecha": "2026-11-13",
+      "real": 95.17,
+      "predicciones": {
+        "RNN": 107.78,
+        "LSTM": 100.9576,
+        "GRU": 99.8804,
+        "Combinación": 102.8727
+      }
+    },
+    {
+      "fecha": "2026-11-16",
+      "real": 92.9,
+      "predicciones": {
+        "RNN": 105.0098,
+        "LSTM": 98.2206,
+        "GRU": 95.5443,
+        "Combinación": 99.5916
+      }
+    }
+  ],
+  "fuente": "datos_congelados.csv",
+  "nota": "Comparación retrospectiva de predicciones del test a horizonte de cinco días. El mejor modelo se identifica después de conocer los valores reales. La combinación es la media simple de las tres redes."
+}

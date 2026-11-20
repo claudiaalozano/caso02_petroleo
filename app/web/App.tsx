@@ -1,8 +1,17 @@
+import EventHistoryChart from './EventHistoryChart';
+import CumulativeErrorChart from './CumulativeErrorChart';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, CircleHelp, Clock3, Database, Ellipsis, Globe2, History, Info, Layers3, LayoutDashboard, Menu, RefreshCw, ShieldCheck, Sparkles, TrendingUp, X } from 'lucide-react';
-import { ModelForecastChart, HistoryChart, LearningChart, ScenarioChart, dateLabel, number } from './Charts';
+import {
+  HistoryChart,
+  LearningChart,
+  ModelForecastChart,
+  ScenarioChart,
+  dateLabel,
+  number,
+} from './Charts';
 import { BlindTest } from './BlindTest';
-import { Evaluation } from './Evaluation';
+import Evaluation from './Evaluation';
 import type { Data, Row } from './types';
 
 const nav = [
@@ -46,10 +55,6 @@ function SectionLink({ to, children }: { to: string; children: React.ReactNode }
 function InfoNote({ children }: { children: React.ReactNode }) { return <div className="info-note"><Info size={15} /><p>{children}</p></div>; }
 
 
-// ==========================================================
-// PREDICCIONES IA: RNN, LSTM, GRU E INGENUO
-// ==========================================================
-
 function Forecast({
   data,
   full = false,
@@ -64,50 +69,42 @@ function Forecast({
   const current = data.historico.at(-1)!;
   const scenario = data.escenarios[horizon];
 
-  const publication = data.predicciones.find(
-    (r) =>
-      Number(r.Horizonte) === Number(horizon) &&
-      String(r.Modelo).trim() === model &&
-      String(r.Objetivo).trim().toLowerCase() === target &&
-      String(r['Fecha origen']).slice(0, 10) === current.fecha
+  const publication = data.predicciones.find((r) =>
+    Number(r.Horizonte) === Number(horizon) &&
+    String(r.Modelo).trim() === model &&
+    String(r.Objetivo).trim().toLowerCase() === target &&
+    String(r['Fecha origen']).slice(0, 10) === current.fecha
   );
 
-  const prediction = publication
-    ? Number(publication['Brent predicho'])
-    : model === 'Ingenuo'
+  const prediction =
+    model === 'Ingenuo'
       ? current.precio
-      : null;
+      : publication
+        ? Number(publication['Brent predicho'])
+        : null;
 
-  const change = prediction !== null
-    ? (prediction / current.precio - 1) * 100
-    : null;
+  const change =
+    prediction === null
+      ? null
+      : (prediction / current.precio - 1) * 100;
 
   const targetDate = publication
     ? String(publication['Fecha objetivo (aprox.)'])
     : scenario?.at(-1)?.fecha ?? '';
 
-  const lowerValue = publication
+  const rawLower = publication
     ? Number(publication['Límite inferior (80 %)'])
-    : null;
+    : NaN;
 
-  const upperValue = publication
+  const rawUpper = publication
     ? Number(publication['Límite superior (80 %)'])
-    : null;
+    : NaN;
 
-  const lower =
-    lowerValue !== null && Number.isFinite(lowerValue)
-      ? lowerValue
-      : null;
-
-  const upper =
-    upperValue !== null && Number.isFinite(upperValue)
-      ? upperValue
-      : null;
+  const lower = Number.isFinite(rawLower) ? rawLower : null;
+  const upper = Number.isFinite(rawUpper) ? rawUpper : null;
 
   return (
-    <section
-      className={`panel forecast-panel ${full ? 'forecast-full' : ''}`}
-    >
+    <section className={`panel forecast-panel ${full ? 'forecast-full' : ''}`}>
       <div className="panel-heading">
         <div>
           <div className="eyebrow">
@@ -116,7 +113,6 @@ function Forecast({
           </div>
           <h2>Una mirada al futuro.</h2>
         </div>
-
         <span className="mini-label">IA + ANÁLISIS</span>
       </div>
 
@@ -129,9 +125,9 @@ function Forecast({
           <button
             key={h}
             type="button"
-            onClick={() => setHorizon(h)}
-            aria-pressed={horizon === h}
             className={horizon === h ? 'active' : ''}
+            aria-pressed={horizon === h}
+            onClick={() => setHorizon(h)}
           >
             <strong>{h} días</strong>
             <span>
@@ -149,17 +145,9 @@ function Forecast({
             value={model}
             onChange={(e) => setModel(e.target.value)}
           >
-            {[
-              'Ingenuo',
-              'RNN',
-              'LSTM',
-              'GRU',
-              'Comb. redes',
-            ].map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
+            {['Ingenuo', 'RNN', 'LSTM', 'GRU', 'Comb. redes'].map(
+              (m) => <option key={m} value={m}>{m}</option>
+            )}
           </select>
         </label>
 
@@ -169,11 +157,11 @@ function Forecast({
             <select
               aria-label="Objetivo predictivo"
               value={target}
-              onChange={(e) => setTarget(e.target.value)}
               disabled={model === 'Ingenuo'}
+              onChange={(e) => setTarget(e.target.value)}
             >
               {model === 'Ingenuo' ? (
-                <option value="retorno">No aplica</option>
+                <option value={target}>No aplica</option>
               ) : (
                 <>
                   <option value="retorno">RETORNO</option>
@@ -194,17 +182,15 @@ function Forecast({
                 {' '}· {horizon} días bursátiles
               </span>
             </span>
-
             <div>
               {number(prediction)}
               <small> USD</small>
             </div>
-
             <span className="forecast-change">
               <TrendingUp size={13} />
               {change !== null && change > 0 ? '+' : ''}
               {number(change ?? 0)} %
-              <span>respecto al precio actual</span>
+              <span> respecto al precio actual</span>
             </span>
           </div>
 
@@ -225,9 +211,7 @@ function Forecast({
         <>
           <div className="prediction-meta">
             <span>Precio actual</span>
-            <strong>
-              {number(current.precio)} USD/barril
-            </strong>
+            <strong>{number(current.precio)} USD/barril</strong>
           </div>
 
           <div className="prediction-meta">
@@ -317,8 +301,9 @@ function Validation({ data }: { data: Data }) {
   const cal = data.calibracion.filter(r => r.Horizonte === Number(h) && String(r.Periodo).startsWith('Test') && r.Método === 'Adaptativo (φ=0.99)');
   return <div className="page-stack"><InfoNote>La precisión se demuestra fuera de muestra. Los resultados de test no demuestran que las redes superen de forma consistente al modelo ingenuo; los horizontes largos requieren especial prudencia.</InfoNote>
     <section className="panel"><div className="panel-heading"><div><h2>Curvas de aprendizaje</h2><p>Pérdida del entrenamiento y de la validación · datos reales</p></div><Tag>30 épocas</Tag></div><div className="filters"><label>Horizonte<select value={h} onChange={e => setH(e.target.value)}>{['5', '63', '252'].map(v => <option key={v} value={v}>{v} días</option>)}</select></label><label>Arquitectura<select value={model} onChange={e => setModel(e.target.value)}>{['RNN', 'LSTM', 'GRU'].map(v => <option key={v}>{v}</option>)}</select></label><label>Objetivo<select value={target} onChange={e => setTarget(e.target.value)}><option value="retorno">RETORNO</option><option value="nivel">NIVEL</option></select></label></div><LearningChart train={selected.train} val={selected.val} naive={curves.ingenuo_val} /><div className="legend multi-legend"><span><i style={{ background: '#7d9b9a' }} />Entrenamiento</span><span><i style={{ background: '#c3a777' }} />Validación</span><span><i style={{ background: '#7f8582' }} />Ingenuo · validación</span></div><p className="source-note">Pérdida en la escala del objetivo normalizado; no equivale a MAE en dólares. Fuente: curvas_aprendizaje_h{h}.json.</p></section>
-    <div className="two-column"><section className="panel"><div className="panel-heading"><div><h2>Validación temporal</h2><p>Walk-Forward · cinco particiones · 5 días</p></div><ShieldCheck size={19} className="gold-text" /></div><div className="table-scroll"><table><thead><tr><th>Partición</th><th>Modelo</th><th>MAE</th><th>DM p-valor</th></tr></thead><tbody>{wf.map((r, i) => <tr key={i}><td>{r.Fold}</td><td>{r.Modelo}</td><td>{number(Number(r.MAE))}</td><td>{r['DM p-valor'] === null ? '—' : number(Number(r['DM p-valor']), 3)}</td></tr>)}</tbody></table></div><p className="source-note">Resultados guardados del cuaderno, horizonte 5. No se extrapolan a 63 ni 252 días.</p></section>
-    <div className="page-stack"><section className="panel"><div className="panel-heading"><div><h2>Calibración de intervalos</h2><p>Intervalo nominal 80 % · test · EWMA φ = 0,99</p></div></div>{cal.length ? cal.map((r, i) => <div key={i} className="calibration">{['baja', 'media', 'alta'].map(reg => <div key={reg}><div><span>Volatilidad {reg}</span><strong>{number(Number(r[`Cobertura vol. ${reg} (%)`]), 1)} %</strong></div><progress value={Number(r[`Cobertura vol. ${reg} (%)`])} max={100} /></div>)}</div>) : <Empty />}<p className="source-note">La cobertura observada varía con el régimen. Un intervalo nominal del 80 % no garantiza una cobertura futura del 80 %.</p></section><section className="panel"><div className="panel-heading"><h2>Error absoluto acumulado</h2></div><Empty text="Datos no disponibles" detail="La serie de errores individuales no está publicada en el repositorio. No se reconstruye a partir de una media." /></section></div></div>
+    <div className="two-column validation-balanced"><section className="panel validation-walkforward"><div className="panel-heading"><div><h2>Validación temporal</h2><p>Walk-Forward · cinco particiones · 5 días</p></div><ShieldCheck size={19} className="gold-text" /></div><div className="table-scroll"><table><thead><tr><th>Partición</th><th>Modelo</th><th>MAE</th><th>DM p-valor</th></tr></thead><tbody>{wf.map((r, i) => <tr key={i}><td>{r.Fold}</td><td>{r.Modelo}</td><td>{number(Number(r.MAE))}</td><td>{r['DM p-valor'] === null ? '—' : number(Number(r['DM p-valor']), 3)}</td></tr>)}</tbody></table></div><p className="source-note">Resultados guardados del cuaderno, horizonte 5. No se extrapolan a 63 ni 252 días.</p></section>
+    <div className="page-stack validation-calibration-column"><section className="panel validation-calibration-card"><div className="panel-heading"><div><h2>Calibración de intervalos</h2><p>Intervalo nominal 80 % · test · EWMA φ = 0,99</p></div></div>{cal.length ? cal.map((r, i) => <div key={i} className="calibration">{['baja', 'media', 'alta'].map(reg => <div key={reg}><div><span>Volatilidad {reg}</span><strong>{number(Number(r[`Cobertura vol. ${reg} (%)`]), 1)} %</strong></div><progress value={Number(r[`Cobertura vol. ${reg} (%)`])} max={100} /></div>)}</div>) : <Empty />}<p className="source-note">La cobertura observada varía con el régimen. Un intervalo nominal del 80 % no garantiza una cobertura futura del 80 %.</p></section></div></div>
+    <CumulativeErrorChart />
     <MetricsTable data={data} />
   </div>;
 }
@@ -331,10 +316,129 @@ function Scenarios({ data }: { data: Data }) {
   return <div className="page-stack"><section className="panel"><div className="panel-heading"><div><h2>El futuro tiene más de un camino.</h2><p>Referencia: modelo ingenuo · intervalos calculados en Python</p></div><Tag>EWMA · λ = 0,94</Tag></div><div className="scenario-toolbar"><div className="periods">{['5', '63', '252'].map(v => <button key={v} className={h === v ? 'selected' : ''} aria-pressed={h === v} onClick={() => setH(v)}>{v} días</button>)}</div><label className="checkbox-label"><input type="checkbox" checked={simulations} onChange={e => setSimulations(e.target.checked)} />Mostrar escenarios simulados</label></div><ScenarioChart history={data.historico} scenarios={data.escenarios[h]} simulations={simulations} /><div className="legend multi-legend"><span><i style={{ background: '#8b9496' }} />Histórico real</span><span><i style={{ background: '#c3a777' }} />Predicción central</span><span><i style={{ background: '#5d513a' }} />Banda central del 50 %</span><span><i style={{ background: '#383328' }} />Intervalo nominal del 80 %</span></div></section><div className="stats-row scenario-stats"><article className="stat-card"><span>Estimación central · {h} días</span><h3>{number(end.central)}<small> USD</small></h3><p>Modelo ingenuo, sin cambio de precio</p></article><article className="stat-card"><span>Banda central del 50 %</span><h3>{number(end.banda50[0])} – {number(end.banda50[1])}<small> USD</small></h3><p>Cuantiles 25 y 75 del error estandarizado</p></article><article className="stat-card"><span>Intervalo nominal del 80 %</span><h3>{number(end.banda80[0])} – {number(end.banda80[1])}<small> USD</small></h3><p>Cuantiles 10 y 90 del error estandarizado</p></article></div><InfoNote>Las trayectorias son simulaciones ilustrativas generadas en Python, no resultados observados ni predicciones de redes neuronales. Las bandas proceden de errores históricos del modelo ingenuo y de la volatilidad EWMA con reversión a la media. Los días objetivo excluyen fines de semana, no festivos.</InfoNote><button className="accordion panel" onClick={() => setMethodOpen(!methodOpen)} aria-expanded={methodOpen}><span>Cómo leer estos escenarios</span><ChevronDown size={17} /></button>{methodOpen && <div className="panel prose"><p>La línea central mantiene el último precio observado, como define el modelo ingenuo. El área interior recoge el rango central del 50 % y el exterior el intervalo nominal del 80 % de los errores pasados ajustados a la volatilidad actual. Las líneas finas son tres simulaciones gaussianas con semilla fija y volatilidad diaria EWMA; no representan cuantiles ni probabilidades individuales.</p><p>Todos los valores se calculan en scripts/export_web_data.py con las mismas ecuaciones de volatilidad de src/incertidumbre.py. Ningún intervalo excluye acontecimientos extremos.</p></div>}</div>;
 }
 
+
 function OilHistory({ data }: { data: Data }) {
   const [selected, setSelected] = useState(3);
-  const event = events[selected];
-  return <div className="page-stack"><div className="editorial-intro"><span className="eyebrow">EL CONTEXTO IMPORTA</span><h2>Detrás de cada precio,<br /><em>una historia.</em></h2><p>Cuatro momentos que transformaron el equilibrio energético mundial.</p></div><div className="timeline">{events.map((e, i) => <button onClick={() => setSelected(i)} className={i === selected ? 'selected-event' : ''} key={e.year}><span>{e.year}</span><i /><h3>{e.title}</h3><p>{e.text}</p><span className="text-link">Ver en el histórico <ArrowUpRight size={14} /></span></button>)}</div><HistoryChart key={event.date} history={data.historico} title={event.title} eventDate={event.date} eventTitle={event.year} /><p className="source-note">Acontecimiento: {dateLabel(event.date, true)}. Fuente documental: <a href={event.url} target="_blank" rel="noreferrer">{event.source} <ArrowUpRight size={12} /></a>. La coincidencia temporal no demuestra una causalidad única.</p></div>;
+
+  const [historicoHistoria, setHistoricoHistoria] =
+    useState<Data['historico'] | null>(null);
+
+  const [errorHistoria, setErrorHistoria] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+
+    fetch(
+      `${import.meta.env.BASE_URL}datos/brent_historia.json`
+    )
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Histórico no disponible');
+        }
+        return res.json();
+      })
+      .then((json) => {
+        if (!Array.isArray(json.historico) ||
+            json.historico.length === 0) {
+          throw new Error('Histórico vacío');
+        }
+
+        if (activo) {
+          setHistoricoHistoria(json.historico);
+        }
+      })
+      .catch(() => {
+        if (activo) setErrorHistoria(true);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  const evento = events[selected];
+
+  return (
+    <div className="page-stack">
+      <div className="editorial-intro">
+        <span className="eyebrow">
+          EL CONTEXTO IMPORTA
+        </span>
+
+        <h2>
+          Detrás de cada precio,
+          <br />
+          <em>una historia.</em>
+        </h2>
+
+        <p>
+          Cuatro momentos que transformaron el
+          equilibrio energético mundial.
+        </p>
+      </div>
+
+      <div className="timeline">
+        {events.map((e, i) => (
+          <button
+            key={e.year}
+            onClick={() => setSelected(i)}
+            className={
+              i === selected ? 'selected-event' : ''
+            }
+          >
+            <span>{e.year}</span>
+            <i />
+            <h3>{e.title}</h3>
+            <p>{e.text}</p>
+
+            <span className="text-link">
+              Ver en el histórico
+              <ArrowUpRight size={14} />
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {historicoHistoria ? (
+        <EventHistoryChart
+          key={evento.date}
+          history={historicoHistoria}
+          title={evento.title}
+          eventDate={evento.date}
+          eventYear={evento.year}
+        />
+      ) : (
+        <section className="panel">
+          <div className="panel-heading">
+            <h2>Histórico del Brent</h2>
+          </div>
+
+          <p className="source-note">
+            {errorHistoria
+              ? 'No se pudo cargar el histórico de FRED / EIA.'
+              : 'Cargando precios históricos del Brent...'}
+          </p>
+        </section>
+      )}
+
+      <p className="source-note">
+        Acontecimiento: {dateLabel(evento.date, true)}.
+        {' '}Fuente documental:{' '}
+        <a
+          href={evento.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {evento.source}
+          <ArrowUpRight size={12} />
+        </a>
+        {' '}Los precios son de FRED / EIA,
+        serie DCOILBRENTEU.
+        La coincidencia temporal no demuestra
+        una causalidad única.
+      </p>
+    </div>
+  );
 }
 
 export default function App() {
@@ -376,20 +480,6 @@ export default function App() {
     document.addEventListener('keydown', trap);
     return () => { document.body.style.overflow = originalOverflow; document.removeEventListener('keydown', trap); previous?.focus(); };
   }, [sourcesOpen]);
-
-  const cotizacionHoy = (
-    data as (Data & {
-      cotizacionHoy?: {
-        fecha: string;
-        hora: string;
-        precio: number;
-        moneda: string;
-        tipo: string;
-        fuente: string;
-        url: string;
-      };
-    }) | null
-  )?.cotizacionHoy;
   const current = data?.historico.at(-1);
   const previous = data?.historico.at(-2);
   const daily = current && previous ? (current.precio / previous.precio - 1) * 100 : 0;
@@ -416,69 +506,6 @@ export default function App() {
       {error ? <section className="panel error-panel"><Empty text="Datos no disponibles" detail="No se ha podido cargar el archivo de datos del proyecto." /><button className="primary-button" onClick={() => void load()}>Volver a intentar<RefreshCw size={14} /></button></section> : !data ? <div className="loading-state" role="status"><span className="loading-ring" />Preparando tu perspectiva de mercado…</div> : <div key={page} className="page-enter">
       {page === 'resumen' && <>
         <div className="market-heading"><div><span className="market-symbol"><span />B</span><div><h2>Petróleo Brent <span className="small-tag">USD / BARRIL</span></h2><p>Referencia mundial de la energía</p></div></div><span className="market-date"><Clock3 size={12} />Último dato · {dateLabel(current!.fecha, true)}</span></div>
-
-        {cotizacionHoy && (
-          <section className="panel" style={{
-            marginBottom: 23,
-            padding: '20px 24px',
-            borderColor: '#50442f'
-          }}>
-            <div className="eyebrow">
-              COTIZACIÓN DEL DÍA · BRENT
-            </div>
-
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 20,
-              marginTop: 12
-            }}>
-              <div>
-                <div style={{
-                  fontSize: 34,
-                  fontWeight: 500,
-                  color: '#e5d3af'
-                }}>
-                  {number(cotizacionHoy.precio)}
-                  <span style={{
-                    fontSize: 13,
-                    marginLeft: 8,
-                    color: '#96a3a5'
-                  }}>
-                    USD/barril
-                  </span>
-                </div>
-
-                <p className="source-note" style={{ marginTop: 3 }}>
-                  {dateLabel(cotizacionHoy.fecha, true)}
-                  {' · '}
-                  {cotizacionHoy.hora} h (Madrid)
-                  {' · '}
-                  {cotizacionHoy.tipo}
-                </p>
-              </div>
-
-              <a
-                href={cotizacionHoy.url}
-                target="_blank"
-                rel="noreferrer"
-                className="outline-button"
-              >
-                Fuente: {cotizacionHoy.fuente}
-                <ArrowUpRight size={14} />
-              </a>
-            </div>
-
-            <p className="source-note">
-              Cotización intradía a la hora indicada, no precio
-              de cierre ni cotización en tiempo real.
-              Las predicciones mantienen su fecha de origen original.
-            </p>
-          </section>
-        )}
-
         <div className="stats-row">
           <article className="stat-card price-card"><span>Precio del Brent <Info size={12}><title>Último precio del CSV, no una cotización en tiempo real</title></Info></span><h3>{number(current!.precio)}<small> USD</small></h3><p><span className={daily >= 0 ? 'positive' : 'negative'}><ArrowUpRight size={13} />{daily > 0 ? '+' : ''}{number(daily)} %</span><span>respecto al día anterior</span></p><svg className="stat-sparkline" viewBox="0 0 140 55" aria-label="Últimas 22 observaciones"><polyline fill="none" stroke="#4bae91" strokeWidth="1.5" points={data.historico.slice(-22).map((p, i, a) => `${i / 21 * 140},${50 - (p.precio - Math.min(...a.map(v => v.precio))) / (Math.max(...a.map(v => v.precio)) - Math.min(...a.map(v => v.precio)) || 1) * 40}`).join(' ')} /></svg></article>
           <article className="stat-card"><span>Rango de las últimas 52 semanas<ChartNoAxesCombined size={14} /></span><h3>{number(annualMin)}<em> — </em>{number(annualMax)}</h3><div className="range-track"><i style={{ left: `${rangePosition}%` }} /></div><p className="justify-between"><span>Mínimo anual</span><span>Máximo anual</span></p></article>
@@ -498,7 +525,7 @@ export default function App() {
       {page === 'prueba' && <BlindTest data={data} />}
       {page === 'escenarios' && <Scenarios data={data} />}
       {page === 'modelos' && <MetricsTable data={data} />}
-       {page === 'evaluacion' && <Evaluation />}
+      {page === 'evaluacion' && <Evaluation />}
       {page === 'fiabilidad' && <Validation data={data} />}
       {page === 'historia' && <OilHistory data={data} />}
       {page === 'metodologia' && <div className="method-grid">{method.map(([n, title, label, text]) => <article className="panel method-card" key={n}><span className="method-number">{n}</span><span className="eyebrow">{label}</span><h2>{title}</h2><p>{text}</p></article>)}<InfoNote>El histórico puede contener valores propagados en días sin una observación nueva. La fecha mostrada es la del registro del CSV; no implica una cotización en tiempo real. Los resultados del cuaderno conservan su periodo de evaluación original.</InfoNote></div>}

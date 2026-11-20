@@ -1,0 +1,255 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, AudioLines, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, CircleHelp, Clock3, Database, Ellipsis, Globe2, History, Info, Layers3, LayoutDashboard, Menu, RefreshCw, ShieldCheck, Sparkles, TrendingUp, X } from 'lucide-react';
+import {
+  HistoryChart,
+  LearningChart,
+  ModelForecastChart,
+  ScenarioChart,
+  dateLabel,
+  number,
+} from './Charts';
+import { BlindTest } from './BlindTest';
+import Evaluation from './Evaluation';
+import type { Data, Row } from './types';
+
+const nav = [
+  { id: 'resumen', label: 'Visión general', icon: LayoutDashboard },
+  { id: 'predicciones', label: 'Predicciones IA', icon: Sparkles },
+  { id: 'prueba', label: 'Prueba a ciegas', icon: Activity },
+  { id: 'escenarios', label: 'Escenarios y riesgo', icon: AudioLines },
+  { id: 'modelos', label: 'Comparar modelos', icon: Layers3 },
+  { id: 'evaluacion', label: 'Evaluación de modelos', icon: ChartNoAxesCombined },
+  { id: 'fiabilidad', label: 'Fiabilidad y validación', icon: ShieldCheck },
+  { id: 'historia', label: 'Historia del petróleo', icon: History },
+  { id: 'metodologia', label: 'Metodología', icon: BookOpen },
+];
+const events = [
+  { year: '2008', date: '2008-09-15', title: 'La crisis financiera global', text: 'La quiebra de Lehman Brothers y el desplome de la actividad económica transformaron las expectativas de demanda de petróleo.', source: 'Reserva Federal', url: 'https://www.federalreservehistory.org/essays/great-recession-and-its-aftermath' },
+  { year: '2014–16', date: '2014-11-27', title: 'Un nuevo equilibrio de oferta', text: 'El auge del petróleo de esquisto y la decisión de la OPEP de mantener su producción contribuyeron a un prolongado descenso de precios.', source: 'Banco Mundial', url: 'https://www.worldbank.org/en/news/press-release/2015/01/07/global-economic-prospects-january-2015-cheap-oil-gives-nations-opportunity-reform' },
+  { year: '2020', date: '2020-03-11', title: 'El mundo se detiene', text: 'La pandemia paralizó la movilidad mundial. El colapso de la demanda tensionó el almacenamiento y alteró profundamente el mercado energético.', source: 'Agencia Internacional de la Energía', url: 'https://www.iea.org/reports/global-energy-review-2020' },
+  { year: '2022', date: '2022-02-24', title: 'La energía como geopolítica', text: 'La invasión rusa de Ucrania aumentó la incertidumbre sobre el suministro, impulsando la volatilidad y la reorganización de los flujos de energía.', source: 'Agencia Internacional de la Energía', url: 'https://www.iea.org/topics/russias-war-on-ukraine' },
+];
+const method = [
+  ['01', 'Tres arquitecturas. Una misma pregunta.', 'RNN, LSTM y GRU', 'Las redes recurrentes procesan secuencias de observaciones. RNN conserva una memoria sencilla; LSTM utiliza puertas para regular qué recuerda; GRU simplifica ese mecanismo. Su complejidad no garantiza una predicción mejor.'],
+  ['02', 'El precio o su movimiento.', 'NIVEL frente a RETORNO', 'NIVEL intenta estimar directamente el precio futuro. RETORNO estima el cambio logarítmico respecto al precio de origen y después lo transforma de nuevo a dólares por barril. Ambos se evalúan sin utilizar información futura.'],
+  ['03', 'Aprender del pasado. Nunca del futuro.', 'Validación temporal Walk-Forward', 'Se entrena con una ventana de información pasada y se evalúa en el tramo siguiente. El proceso avanza en el tiempo en cinco particiones. Un test final reservado permite contrastar la generalización fuera de la selección.'],
+  ['04', 'La referencia que hay que superar.', 'Modelo ingenuo', 'Asume que el precio futuro será igual al último precio observado. No es una red neuronal ni requiere entrenamiento. Es una referencia exigente en mercados donde el signo del movimiento es difícil de anticipar.'],
+  ['05', 'Diversificar la estimación.', 'Combinación de predicciones', 'La combinación de redes utiliza pesos iguales sobre los log-retornos de RNN, LSTM y GRU. El proyecto también estudia combinaciones con el modelo ingenuo y el primer contrato de futuros. Sus resultados no deben confundirse entre horizontes.'],
+  ['06', 'Un rango, no una promesa.', 'Incertidumbre y volatilidad EWMA', 'La varianza reciente usa EWMA con λ = 0,94 y reversión a la media con φ = 0,99. Los errores logarítmicos históricos se estandarizan por la volatilidad del horizonte; sus cuantiles forman las bandas del 50 % y del 80 %. La cobertura nominal no es una garantía.'],
+];
+
+function useRoute() {
+  const read = () => nav.some(n => n.id === window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'resumen';
+  const [page, setPage] = useState(read);
+  useEffect(() => { const change = () => { setPage(read()); window.scrollTo({ top: 0, behavior: 'instant' }); }; window.addEventListener('hashchange', change); return () => window.removeEventListener('hashchange', change); }, []);
+  return page;
+}
+const go = (page: string) => { window.location.hash = page; };
+function Empty({ text = 'Pendiente de actualización', detail = 'No hay resultados publicados para esta selección.' }: { text?: string; detail?: string }) {
+  return <div className="empty-state"><Database size={25} strokeWidth={1} /><h3>{text}</h3><p>{detail}</p></div>;
+}
+function Tag({ children, green = false }: { children: React.ReactNode; green?: boolean }) { return <span className={`tag ${green ? 'green' : ''}`}><i className="status-dot" />{children}</span>; }
+function SectionLink({ to, children }: { to: string; children: React.ReactNode }) { return <a className="text-link" href={`#${to}`}>{children}<ArrowUpRight size={15} /></a>; }
+function InfoNote({ children }: { children: React.ReactNode }) { return <div className="info-note"><Info size={15} /><p>{children}</p></div>; }
+
+function Forecast({ data, full = false }: { data: Data; full?: boolean }) {
+  const [horizon, setHorizon] = useState('5');
+  const [model, setModel] = useState('Ingenuo');
+  const [target, setTarget] = useState('retorno');
+  const current = data.historico.at(-1)!;
+  const scenario = data.escenarios[horizon];
+  const publication = data.predicciones.find(r =>
+  Number(r.Horizonte) === Number(horizon) &&
+  String(r.Modelo).trim() === model &&
+  String(r.Objetivo).trim().toLowerCase() === target &&
+  String(r['Fecha origen']).slice(0, 10) === current.fecha
+);
+  const prediction = model === 'Ingenuo' ? current.precio : publication ? Number(publication['Brent predicho']) : null;
+  const change = prediction === null ? null : (prediction / current.precio - 1) * 100;
+  return <section className={`panel forecast-panel ${full ? 'forecast-full' : ''}`}>
+    <div className="panel-heading"><div><div className="eyebrow"><Sparkles size={13} />INTELIGENCIA PREDICTIVA</div><h2>Una mirada al futuro.</h2></div><span className="mini-label">IA + ANÁLISIS</span></div>
+    <label className="field-label">Horizonte de predicción</label>
+    <div className="horizon-select">{['5', '63', '252'].map((h, i) => <button key={h} onClick={() => setHorizon(h)} aria-pressed={horizon === h} className={horizon === h ? 'active' : ''}><strong>{h} días</strong><span>{['Corto plazo', 'Medio plazo', 'Largo plazo'][i]}</span></button>)}</div>
+    <div className="form-row"><label>Modelo<select aria-label="Modelo predictivo" value={model} onChange={e => setModel(e.target.value)}>{['Ingenuo', 'RNN', 'LSTM', 'GRU', 'Comb. redes'].map(m => <option key={m}>{m}</option>)}</select></label>{full && <label>Objetivo<select aria-label="Objetivo predictivo" disabled={model === 'Ingenuo'} value={target} onChange={e => setTarget(e.target.value)}>{model === 'Ingenuo' ? <option value={target}>No aplica</option> : <><option value="retorno">RETORNO</option><option value="nivel" disabled>
+  NIVEL — sin predicción de producción
+</option></>}</select></label>}</div>
+    {prediction !== null ? <><div className="forecast-price"><span>Precio estimado <span className="gold-text">· {horizon} días bursátiles</span></span><div>{number(prediction)}<small> USD</small></div><span className="forecast-change"><TrendingUp size={13} />{change! > 0 ? '+' : ''}{number(change!)} % <span>respecto al precio actual</span></span></div><div className="prediction-meta"><span>Fecha objetivo aproximada</span><strong>{dateLabel(scenario.at(-1)!.fecha)}</strong></div></> : <Empty detail="Publica el resultado Python de este modelo y objetivo para consultar su predicción." />}
+    {full && <><div className="prediction-meta"><span>Precio actual</span><strong>{number(current.precio)} USD/barril</strong></div><div className="prediction-meta"><span>Último reentrenamiento</span><strong>{model === 'Ingenuo' ? (
+  <>
+    <div className="chart-caption">
+      Histórico real y proyección de referencia
+    </div>
+
+    <ScenarioChart
+      history={data.historico}
+      scenarios={scenario}
+    />
+  </>
+) : prediction !== null && publication ? (
+  <>
+    <div className="chart-caption">
+      Histórico real y predicción · {model} · {horizon} días
+    </div>
+
+    <ModelForecastChart
+      history={data.historico}
+      model={model}
+      prediction={prediction}
+      date={String(
+        publication['Fecha objetivo (aprox.)']
+      )}
+      lower={Number(
+        publication['Límite inferior (80 %)']
+      )}
+      upper={Number(
+        publication['Límite superior (80 %)']
+      )}
+    />
+  </>
+) : null}
+    <p className="fine-print"><ShieldCheck size={12} />{model === 'Ingenuo' ? 'Referencia sin cambio de precio. No es una predicción IA.' : 'Resultados sujetos a incertidumbre. No son garantías.'}</p>
+  </section>;
+}
+
+function MetricsTable({ data, brief = false }: { data: Data; brief?: boolean }) {
+  const [h, setH] = useState('5');
+  const [target, setTarget] = useState('retorno');
+  const [architecture, setArchitecture] = useState('Todas');
+  const [sort, setSort] = useState('MAE');
+  const rows = data.metricas.filter(r => r.Horizonte === Number(h) && (r.Objetivo === target || r.Modelo === 'Ingenuo') && (architecture === 'Todas' || r.Modelo === architecture)).sort((a, b) => Number(a[sort] ?? Infinity) - Number(b[sort] ?? Infinity));
+  const best = Math.min(...rows.map(r => Number(r.MAE)));
+  const columns = brief ? ['Modelo', 'MAE', 'Skill'] : ['Modelo', 'MAE', 'RMSE', 'R²', 'Skill', 'Sesgo', 'Acierto dir. (%)', 'DM estad.', 'DM p-valor'];
+  return <section className="panel metrics-panel">
+    <div className="panel-heading"><div><h2>{brief ? 'El valor de la evidencia' : 'Comparación de modelos'}</h2><p>Test final · {h} días bursátiles · {target.toUpperCase()}</p></div>{brief ? <SectionLink to="modelos">Comparar</SectionLink> : <Tag>Resultados del proyecto</Tag>}</div>
+    {!brief && <div className="filters"><label>Horizonte<select value={h} onChange={e => setH(e.target.value)}>{['5', '63', '252'].map(v => <option key={v} value={v}>{v} días bursátiles</option>)}</select></label><label>Arquitectura<select value={architecture} onChange={e => setArchitecture(e.target.value)}>{['Todas', 'RNN', 'LSTM', 'GRU', 'Ingenuo'].map(v => <option key={v}>{v}</option>)}</select></label><label>Objetivo<select value={target} onChange={e => setTarget(e.target.value)}><option value="retorno">RETORNO</option><option value="nivel">NIVEL</option></select></label></div>}
+    <div className="table-scroll"><table><thead><tr>{columns.map(c => <th key={c}><button onClick={() => c !== 'Modelo' && setSort(c)}>{c === 'Acierto dir. (%)' ? 'Acierto dir.' : c}{c === sort && <ChevronDown size={11} />}</button></th>)}</tr></thead><tbody>{rows.map(r => <tr key={`${r.Modelo}-${r.Objetivo}`} className={r.MAE === best ? 'best-row' : ''}>{columns.map((c, i) => <td key={c}>{i === 0 ? <span className="model-name"><i className={`model-dot model-${r.Modelo}`} />{r.Modelo}{!brief && r.MAE === best && <span className="best-tag">Menor MAE</span>}</span> : r[c] == null ? <span title="Datos no disponibles">—</span> : c === 'Skill' ? <span className={Number(r[c]) < 0 ? 'negative' : Number(r[c]) > 0 ? 'positive' : ''}>{number(Number(r[c]) * 100, 1)} %</span> : c === 'Acierto dir. (%)' ? `${number(Number(r[c]), 1)} %` : number(Number(r[c]), c === 'R²' || c === 'DM p-valor' ? 3 : 2)}</td>)}</tr>)}</tbody></table></div>
+    {!brief && <><div className="comparison-bars">{rows.map(r => <div key={String(r.Modelo)}><span>{r.Modelo}</span><div><i style={{ width: `${Number(r.MAE) / Math.max(...rows.map(x => Number(x.MAE))) * 100}%`, background: r.MAE === best ? '#c3a777' : '#536560' }} /></div><strong>{number(Number(r.MAE))}</strong></div>)}</div><InfoNote>MAE y RMSE en USD/barril; menor es mejor. Skill = 1 − MAE / MAE ingenuo. Un Skill negativo indica un error mayor que la referencia. El test de Diebold-Mariano contrasta diferencias de error; su p-valor no mide fiabilidad predictiva.</InfoNote><p className="source-note">Periodo de test: 13 dic 2022 – 17 nov 2026. {data.fuenteMetricas} «—» significa datos no disponibles. Las combinaciones no tienen todas estas métricas publicadas y no se completan por inferencia.</p></>}
+    {brief && <div className="card-bottom-note"><Info size={12} />Menor MAE, mejor ajuste. Sin superioridad asumida.</div>}
+  </section>;
+}
+
+function Validation({ data }: { data: Data }) {
+  const [h, setH] = useState('5');
+  const [model, setModel] = useState('RNN');
+  const [target, setTarget] = useState('retorno');
+  const curves = data.curvas[h][target];
+  const selected = curves[model];
+  const wf = data.validacion.filter(r => r.Objetivo === target);
+  const cal = data.calibracion.filter(r => r.Horizonte === Number(h) && String(r.Periodo).startsWith('Test') && r.Método === 'Adaptativo (φ=0.99)');
+  return <div className="page-stack"><InfoNote>La precisión se demuestra fuera de muestra. Los resultados de test no demuestran que las redes superen de forma consistente al modelo ingenuo; los horizontes largos requieren especial prudencia.</InfoNote>
+    <section className="panel"><div className="panel-heading"><div><h2>Curvas de aprendizaje</h2><p>Pérdida del entrenamiento y de la validación · datos reales</p></div><Tag>30 épocas</Tag></div><div className="filters"><label>Horizonte<select value={h} onChange={e => setH(e.target.value)}>{['5', '63', '252'].map(v => <option key={v} value={v}>{v} días</option>)}</select></label><label>Arquitectura<select value={model} onChange={e => setModel(e.target.value)}>{['RNN', 'LSTM', 'GRU'].map(v => <option key={v}>{v}</option>)}</select></label><label>Objetivo<select value={target} onChange={e => setTarget(e.target.value)}><option value="retorno">RETORNO</option><option value="nivel">NIVEL</option></select></label></div><LearningChart train={selected.train} val={selected.val} naive={curves.ingenuo_val} /><div className="legend multi-legend"><span><i style={{ background: '#7d9b9a' }} />Entrenamiento</span><span><i style={{ background: '#c3a777' }} />Validación</span><span><i style={{ background: '#7f8582' }} />Ingenuo · validación</span></div><p className="source-note">Pérdida en la escala del objetivo normalizado; no equivale a MAE en dólares. Fuente: curvas_aprendizaje_h{h}.json.</p></section>
+    <div className="two-column"><section className="panel"><div className="panel-heading"><div><h2>Validación temporal</h2><p>Walk-Forward · cinco particiones · 5 días</p></div><ShieldCheck size={19} className="gold-text" /></div><div className="table-scroll"><table><thead><tr><th>Partición</th><th>Modelo</th><th>MAE</th><th>DM p-valor</th></tr></thead><tbody>{wf.map((r, i) => <tr key={i}><td>{r.Fold}</td><td>{r.Modelo}</td><td>{number(Number(r.MAE))}</td><td>{r['DM p-valor'] === null ? '—' : number(Number(r['DM p-valor']), 3)}</td></tr>)}</tbody></table></div><p className="source-note">Resultados guardados del cuaderno, horizonte 5. No se extrapolan a 63 ni 252 días.</p></section>
+    <div className="page-stack"><section className="panel"><div className="panel-heading"><div><h2>Calibración de intervalos</h2><p>Intervalo nominal 80 % · test · EWMA φ = 0,99</p></div></div>{cal.length ? cal.map((r, i) => <div key={i} className="calibration">{['baja', 'media', 'alta'].map(reg => <div key={reg}><div><span>Volatilidad {reg}</span><strong>{number(Number(r[`Cobertura vol. ${reg} (%)`]), 1)} %</strong></div><progress value={Number(r[`Cobertura vol. ${reg} (%)`])} max={100} /></div>)}</div>) : <Empty />}<p className="source-note">La cobertura observada varía con el régimen. Un intervalo nominal del 80 % no garantiza una cobertura futura del 80 %.</p></section><section className="panel"><div className="panel-heading"><h2>Error absoluto acumulado</h2></div><Empty text="Datos no disponibles" detail="La serie de errores individuales no está publicada en el repositorio. No se reconstruye a partir de una media." /></section></div></div>
+    <MetricsTable data={data} />
+  </div>;
+}
+
+function Scenarios({ data }: { data: Data }) {
+  const [h, setH] = useState('63');
+  const [simulations, setSimulations] = useState(true);
+  const [methodOpen, setMethodOpen] = useState(false);
+  const end = data.escenarios[h].at(-1)!;
+  return <div className="page-stack"><section className="panel"><div className="panel-heading"><div><h2>El futuro tiene más de un camino.</h2><p>Referencia: modelo ingenuo · intervalos calculados en Python</p></div><Tag>EWMA · λ = 0,94</Tag></div><div className="scenario-toolbar"><div className="periods">{['5', '63', '252'].map(v => <button key={v} className={h === v ? 'selected' : ''} aria-pressed={h === v} onClick={() => setH(v)}>{v} días</button>)}</div><label className="checkbox-label"><input type="checkbox" checked={simulations} onChange={e => setSimulations(e.target.checked)} />Mostrar escenarios simulados</label></div><ScenarioChart history={data.historico} scenarios={data.escenarios[h]} simulations={simulations} /><div className="legend multi-legend"><span><i style={{ background: '#8b9496' }} />Histórico real</span><span><i style={{ background: '#c3a777' }} />Predicción central</span><span><i style={{ background: '#5d513a' }} />Banda central del 50 %</span><span><i style={{ background: '#383328' }} />Intervalo nominal del 80 %</span></div></section><div className="stats-row scenario-stats"><article className="stat-card"><span>Estimación central · {h} días</span><h3>{number(end.central)}<small> USD</small></h3><p>Modelo ingenuo, sin cambio de precio</p></article><article className="stat-card"><span>Banda central del 50 %</span><h3>{number(end.banda50[0])} – {number(end.banda50[1])}<small> USD</small></h3><p>Cuantiles 25 y 75 del error estandarizado</p></article><article className="stat-card"><span>Intervalo nominal del 80 %</span><h3>{number(end.banda80[0])} – {number(end.banda80[1])}<small> USD</small></h3><p>Cuantiles 10 y 90 del error estandarizado</p></article></div><InfoNote>Las trayectorias son simulaciones ilustrativas generadas en Python, no resultados observados ni predicciones de redes neuronales. Las bandas proceden de errores históricos del modelo ingenuo y de la volatilidad EWMA con reversión a la media. Los días objetivo excluyen fines de semana, no festivos.</InfoNote><button className="accordion panel" onClick={() => setMethodOpen(!methodOpen)} aria-expanded={methodOpen}><span>Cómo leer estos escenarios</span><ChevronDown size={17} /></button>{methodOpen && <div className="panel prose"><p>La línea central mantiene el último precio observado, como define el modelo ingenuo. El área interior recoge el rango central del 50 % y el exterior el intervalo nominal del 80 % de los errores pasados ajustados a la volatilidad actual. Las líneas finas son tres simulaciones gaussianas con semilla fija y volatilidad diaria EWMA; no representan cuantiles ni probabilidades individuales.</p><p>Todos los valores se calculan en scripts/export_web_data.py con las mismas ecuaciones de volatilidad de src/incertidumbre.py. Ningún intervalo excluye acontecimientos extremos.</p></div>}</div>;
+}
+
+function OilHistory({ data }: { data: Data }) {
+  const [selected, setSelected] = useState(3);
+  const event = events[selected];
+  return <div className="page-stack"><div className="editorial-intro"><span className="eyebrow">EL CONTEXTO IMPORTA</span><h2>Detrás de cada precio,<br /><em>una historia.</em></h2><p>Cuatro momentos que transformaron el equilibrio energético mundial.</p></div><div className="timeline">{events.map((e, i) => <button onClick={() => setSelected(i)} className={i === selected ? 'selected-event' : ''} key={e.year}><span>{e.year}</span><i /><h3>{e.title}</h3><p>{e.text}</p><span className="text-link">Ver en el histórico <ArrowUpRight size={14} /></span></button>)}</div><HistoryChart key={event.date} history={data.historico} title={event.title} eventDate={event.date} eventTitle={event.year} /><p className="source-note">Acontecimiento: {dateLabel(event.date, true)}. Fuente documental: <a href={event.url} target="_blank" rel="noreferrer">{event.source} <ArrowUpRight size={12} /></a>. La coincidencia temporal no demuestra una causalidad única.</p></div>;
+}
+
+export default function App() {
+  const page = useRoute();
+  const [data, setData] = useState<Data | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const sourcesRef = useRef<HTMLElement>(null);
+  const [notice, setNotice] = useState('');
+  const load = useCallback(async () => {
+    setLoading(true); setError(false);
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}datos/brent.json`, { cache: 'no-cache' });
+      if (!response.ok) throw new Error('No disponible');
+      const json = await response.json();
+      if (!json.historico?.length) throw new Error('Sin histórico');
+      setData(json);
+    } catch { setError(true); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setMobileOpen(false); }, [page]);
+  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(timer); }, [notice]);
+  useEffect(() => { const close = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSourcesOpen(false); setMobileOpen(false); } }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, []);
+  useEffect(() => {
+    if (!sourcesOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const elements = sourcesRef.current?.querySelectorAll<HTMLElement>('button, a[href], select, input, [tabindex="0"]');
+      if (!elements?.length) return;
+      const first = elements[0], last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', trap);
+    return () => { document.body.style.overflow = originalOverflow; document.removeEventListener('keydown', trap); previous?.focus(); };
+  }, [sourcesOpen]);
+  const current = data?.historico.at(-1);
+  const previous = data?.historico.at(-2);
+  const daily = current && previous ? (current.precio / previous.precio - 1) * 100 : 0;
+  const annualPrices = data?.historico.slice(-260).map(p => p.precio) || [];
+  const annualMin = Math.min(...annualPrices);
+  const annualMax = Math.max(...annualPrices);
+  const rangePosition = current ? Math.max(0, Math.min(100, (current.precio - annualMin) / (annualMax - annualMin || 1) * 100)) : 0;
+  const title = nav.find(n => n.id === page)!.label;
+  const download = () => {
+    if (!data) return;
+    const csv = '\uFEFFFecha;Brent (USD/barril)\n' + data.historico.map(p => `${p.fecha};${String(p.precio).replace('.', ',')}`).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a'); a.href = url; a.download = `BRENT-historico-${current!.fecha}.csv`; a.click(); URL.revokeObjectURL(url);
+    setNotice('Histórico exportado correctamente.');
+  };
+  return <div className="app-shell">
+    <a className="skip-link" href="#contenido" onClick={e => { e.preventDefault(); const content = document.getElementById('contenido'); content?.setAttribute('tabindex', '-1'); content?.focus(); }}>Saltar al contenido</a>
+    {mobileOpen && <button className="sidebar-overlay" aria-label="Cerrar navegación" onClick={() => setMobileOpen(false)} />}
+    <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}><a href="#resumen" className="brand">BRENT<span>.</span></a><span className="brand-caption">INTELIGENCIA FINANCIERA</span><div className="sidebar-rule" /><span className="nav-caption">TU ESPACIO DE ANÁLISIS</span><nav aria-label="Navegación principal">{nav.map(({ id, label, icon: Icon }) => <a key={id} href={`#${id}`} className={page === id ? 'active' : ''} aria-current={page === id ? 'page' : undefined}><Icon size={17} strokeWidth={1.5} /><span>{label}</span>{id === 'predicciones' && <span className="ai-badge">IA</span>}</a>)}</nav>
+      <div className="sidebar-bottom"><div className="private-mark"><div className="private-symbol"><Activity size={20} strokeWidth={1} /></div><span>Más perspectiva.<br /><strong>Mejores decisiones.</strong></span></div><button onClick={() => setSourcesOpen(true)} className="sidebar-source"><Database size={15} />Fuentes y datos<ArrowUpRight size={13} /></button><a href="#metodologia" className="sidebar-source"><CircleHelp size={15} />Guía de la plataforma</a><div className="sidebar-rule" /><div className="sidebar-signature"><span className="signature-avatar">B.</span><div>Espacio de análisis<small>Perspectiva independiente</small></div><Ellipsis size={17} /></div></div>
+    </aside>
+    <div className="main-shell"><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Abrir navegación" onClick={() => setMobileOpen(!mobileOpen)}><Menu size={20} /></button><span>Plataforma</span><ChevronRight size={12} /><strong>{title}</strong></div><div className="topbar-right"><span className="data-status"><i className="status-dot" />Datos del proyecto</span><span className="header-divider" /><span className="language"><Globe2 size={14} />ES</span><button className={`icon-button ${loading ? 'spinning' : ''}`} aria-label="Actualizar datos" title="Volver a cargar los archivos publicados" onClick={() => { void load(); setNotice('Consultando los últimos archivos publicados.'); }}><RefreshCw size={15} /></button><span className="header-avatar">B.</span></div></header>
+      <main id="contenido" className="main-content"><div className="page-header"><div><div className="eyebrow">{page === 'resumen' ? 'PERSPECTIVA GLOBAL. PRECISIÓN LOCAL.' : 'BRENT. / INTELIGENCIA DE MERCADO'}</div><h1>{page === 'resumen' ? 'El valor de anticiparse.' : title === 'Predicciones IA' ? 'La inteligencia detrás del precio.' : title}</h1><p>{({ resumen: 'El mercado del Brent, con la perspectiva que necesitas.', predicciones: 'Explora lo que los datos pueden decir. Y conoce sus límites.', prueba: 'Predicciones congeladas antes de conocer los resultados.', escenarios: 'Comprender la incertidumbre también es una ventaja.', modelos: 'La evidencia, por encima de la complejidad.', evaluacion: 'Explora predicciones, errores y capacidad direccional.', fiabilidad: 'Transparencia en cada estimación. Rigor en cada resultado.', historia: 'El pasado no se repite. Pero siempre aporta perspectiva.', metodologia: 'La complejidad del análisis. La claridad de entenderlo.' } as Record<string, string>)[page]}</p></div><button className="outline-button export-button" onClick={download} disabled={!data}><ArrowDownToLine size={14} />Exportar datos</button></div>
+      {error ? <section className="panel error-panel"><Empty text="Datos no disponibles" detail="No se ha podido cargar el archivo de datos del proyecto." /><button className="primary-button" onClick={() => void load()}>Volver a intentar<RefreshCw size={14} /></button></section> : !data ? <div className="loading-state" role="status"><span className="loading-ring" />Preparando tu perspectiva de mercado…</div> : <div key={page} className="page-enter">
+      {page === 'resumen' && <>
+        <div className="market-heading"><div><span className="market-symbol"><span />B</span><div><h2>Petróleo Brent <span className="small-tag">USD / BARRIL</span></h2><p>Referencia mundial de la energía</p></div></div><span className="market-date"><Clock3 size={12} />Último dato · {dateLabel(current!.fecha, true)}</span></div>
+        <div className="stats-row">
+          <article className="stat-card price-card"><span>Precio del Brent <Info size={12}><title>Último precio del CSV, no una cotización en tiempo real</title></Info></span><h3>{number(current!.precio)}<small> USD</small></h3><p><span className={daily >= 0 ? 'positive' : 'negative'}><ArrowUpRight size={13} />{daily > 0 ? '+' : ''}{number(daily)} %</span><span>respecto al día anterior</span></p><svg className="stat-sparkline" viewBox="0 0 140 55" aria-label="Últimas 22 observaciones"><polyline fill="none" stroke="#4bae91" strokeWidth="1.5" points={data.historico.slice(-22).map((p, i, a) => `${i / 21 * 140},${50 - (p.precio - Math.min(...a.map(v => v.precio))) / (Math.max(...a.map(v => v.precio)) - Math.min(...a.map(v => v.precio)) || 1) * 40}`).join(' ')} /></svg></article>
+          <article className="stat-card"><span>Rango de las últimas 52 semanas<ChartNoAxesCombined size={14} /></span><h3>{number(annualMin)}<em> — </em>{number(annualMax)}</h3><div className="range-track"><i style={{ left: `${rangePosition}%` }} /></div><p className="justify-between"><span>Mínimo anual</span><span>Máximo anual</span></p></article>
+          <article className="stat-card"><span>Volatilidad del mercado<Activity size={14} /></span><h3 className="volatility-title">{data.volatilidad.nivel}<span className="volatility-bars">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ height: 7 + i * 1.9, opacity: i < Math.ceil(data.volatilidad.percentil / 100 * 12) ? 1 : .18 }} />)}</span></h3><p>EWMA anualizada <strong>{number(data.volatilidad.anual, 1)} %</strong><span className="muted-separator">/</span> Riesgo dinámico</p></article>
+          <article className="stat-card coverage-card"><span>Profundidad del análisis<Database size={13} /></span><h3>{new Date(current!.fecha).getFullYear() - 2000}<small> años de datos</small></h3><p><span className="tiny-gold-dot" />{number(data.historico.length, 0)} observaciones históricas</p></article>
+        </div>
+        <div className="dashboard-primary"><HistoryChart history={data.historico} /><Forecast data={data} /></div>
+        <div className="section-divider"><span>MÁS ALLÁ DEL PRECIO</span><span>Una visión completa del mercado</span></div>
+        <div className="dashboard-secondary">
+          <section className="panel risk-preview"><div className="panel-heading"><div><div className="eyebrow">ESCENARIOS Y RIESGO</div><h2>Lo posible también importa.</h2></div><AudioLines size={17} className="gold-text" /></div><p className="subtle">Una perspectiva del rango de incertidumbre.</p><ScenarioChart history={data.historico} scenarios={data.escenarios['63']} compact /><div className="risk-bottom"><span><i className="tiny-gold-dot" />Intervalo nominal del 80 % · 63 días</span><a href="#escenarios" aria-label="Explorar escenarios y riesgo"><ArrowUpRight size={18} /></a></div></section>
+          <MetricsTable data={data} brief />
+          <a href="#historia" className="editorial-card"><img src={`${import.meta.env.BASE_URL}images/petroleo-mar.jpg`} alt="Infraestructura marítima en el horizonte del océano" /><div className="editorial-shade" /><div className="editorial-content"><span className="eyebrow">CONTEXTO QUE DA PERSPECTIVA</span><h2>El petróleo mueve al mundo.<br /><em>Entiende por qué.</em></h2><span className="editorial-link">Explorar su historia <ArrowUpRight size={17} /></span></div></a>
+        </div>
+        <InfoNote>La información es poder. La prudencia, también. Las predicciones no garantizan resultados futuros y no constituyen asesoramiento de inversión.</InfoNote>
+      </>}
+      {page === 'predicciones' && <div className="page-stack"><Forecast data={data} full /><InfoNote>Los horizontes son días bursátiles aproximados. Los resultados de RNN, LSTM, GRU y combinación se muestran solo cuando existe una predicción publicada para la fecha de origen y el objetivo seleccionados. El modelo ingenuo no utiliza inteligencia artificial.</InfoNote></div>}
+      {page === 'prueba' && <BlindTest data={data} />}
+      {page === 'escenarios' && <Scenarios data={data} />}
+      {page === 'modelos' && <MetricsTable data={data} />}
+      {page === 'evaluacion' && <Evaluation />}
+      {page === 'fiabilidad' && <Validation data={data} />}
+      {page === 'historia' && <OilHistory data={data} />}
+      {page === 'metodologia' && <div className="method-grid">{method.map(([n, title, label, text]) => <article className="panel method-card" key={n}><span className="method-number">{n}</span><span className="eyebrow">{label}</span><h2>{title}</h2><p>{text}</p></article>)}<InfoNote>El histórico puede contener valores propagados en días sin una observación nueva. La fecha mostrada es la del registro del CSV; no implica una cotización en tiempo real. Los resultados del cuaderno conservan su periodo de evaluación original.</InfoNote></div>}
+      </div>}
+      <footer className="footer"><span>BRENT<span className="gold-text">.</span> <span className="footer-divider">/</span> Inteligencia para una nueva perspectiva.</span><div><span>Datos con transparencia</span><span className="footer-divider">·</span><button onClick={() => setSourcesOpen(true)}>Fuentes y metodología <ArrowUpRight size={11} /></button></div></footer></main>
+    </div>
+    {notice && <div className="toast" role="status"><ShieldCheck size={16} />{notice}<button aria-label="Cerrar aviso" onClick={() => setNotice('')}><X size={13} /></button></div>}
+    {sourcesOpen && <div className="modal-backdrop" onClick={() => setSourcesOpen(false)}><section ref={sourcesRef} className="panel sources-modal" role="dialog" aria-modal="true" aria-label="Fuentes y actualización de datos" onClick={e => e.stopPropagation()}><div className="panel-heading"><div><span className="eyebrow">TRANSPARENCIA POR DISEÑO</span><h2>Fuentes y actualización de datos</h2></div><button autoFocus className="icon-button" aria-label="Cerrar fuentes" onClick={() => setSourcesOpen(false)}><X size={18} /></button></div><div className="prose"><h3>Precios históricos</h3><p>Archivo data/petroleo_dataset.csv del proyecto. Fuente declarada: FRED / EIA. Último registro: {current ? dateLabel(current.fecha, true) : 'Datos no disponibles'}. La hora original no está disponible; no se presenta como una cotización en directo.</p><h3>Métricas y aprendizaje</h3><p>Tablas ejecutadas del cuaderno analisis_petroleo.ipynb y archivos curvas_aprendizaje_h5, h63 y h252.json. Las métricas se muestran con la precisión publicada. Los resultados del test terminan el 17 de noviembre de 2026 y no se recalculan al añadir precios.</p><h3>Actualizar la plataforma</h3><p>Después de actualizar los datos o publicar resultados del reentrenamiento, ejecuta <code>python3 scripts/export_web_data.py</code> y vuelve a desplegar. El archivo public/datos/brent.json alimenta todas las vistas. «Actualizar datos» vuelve a leer ese archivo, no entrena modelos ni consulta cotizaciones externas.</p><h3>Escenarios</h3><p>Modelo ingenuo y bandas empíricas calculados en Python mediante EWMA, λ = 0,94 y φ = 0,99. Las simulaciones ilustrativas no son cotizaciones ni previsiones garantizadas.</p><p className="photo-credit">Fotografía: Tomas Williams / Unsplash.</p></div><button className="primary-button" onClick={() => { setSourcesOpen(false); go('metodologia'); }}>Conocer la metodología<ArrowRight size={15} /></button></section></div>}
+  </div>;
+}

@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceDot } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceDot,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import type { Price, Scenario } from './types';
 
@@ -77,9 +89,9 @@ export function LearningChart({ train, val, naive }: { train: number[]; val: num
 }
 
 
-// ==========================================================
-// GRÁFICO DE PREDICCIÓN RNN, LSTM Y GRU
-// ==========================================================
+// ======================================================
+// GRÁFICO DE PREDICCIÓN PARA RNN, LSTM Y GRU
+// ======================================================
 
 export function ModelForecastChart({
   history,
@@ -96,6 +108,7 @@ export function ModelForecastChart({
   lower: number | null;
   upper: number | null;
 }) {
+  // Últimas 25 observaciones históricas
   const past = history.slice(-25);
   const origin = past.at(-1);
 
@@ -103,48 +116,51 @@ export function ModelForecastChart({
     return null;
   }
 
+  const originDate = origin.fecha;
   const targetDate = date.slice(0, 10);
 
-  const points: {
-    fecha: string;
-    precio?: number;
-    proyeccion?: number;
-  }[] = past.map((p) => ({
+  // Histórico real
+  const points = past.map((p) => ({
     fecha: p.fecha,
     precio: p.precio,
     proyeccion:
-      p.fecha === origin.fecha ? p.precio : undefined,
+      p.fecha === originDate
+        ? origin.precio
+        : undefined as number | undefined,
   }));
 
+  // Un único punto futuro publicado por el modelo
   points.push({
     fecha: targetDate,
+    precio: undefined as unknown as number,
     proyeccion: prediction,
   });
 
-  const bounds = [lower, upper].filter(
-    (v): v is number =>
-      v !== null && Number.isFinite(v)
+  // Límites de visualización
+  const validBounds = [lower, upper].filter(
+    (n): n is number =>
+      n !== null && Number.isFinite(n)
   );
 
   const values = [
     ...past.map((p) => p.precio),
     prediction,
-    ...bounds,
+    ...validBounds,
   ];
 
   const min = Math.floor(Math.min(...values) - 2);
   const max = Math.ceil(Math.max(...values) + 2);
 
   return (
-    <div style={{ width: '100%', height: 370 }}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="model-forecast-chart">
+      <ResponsiveContainer width="100%" height={350}>
         <ComposedChart
           data={points}
           margin={{
-            top: 20,
-            right: 28,
+            top: 18,
+            right: 22,
             left: 0,
-            bottom: 10,
+            bottom: 0,
           }}
         >
           <CartesianGrid
@@ -172,32 +188,36 @@ export function ModelForecastChart({
 
           <Tooltip content={<ChartTooltip />} />
 
+          {/* Histórico real */}
           <Line
             dataKey="precio"
             name="Brent histórico"
             stroke="#89969a"
-            strokeWidth={1.8}
+            strokeWidth={1.7}
             dot={false}
             isAnimationActive={false}
           />
 
+          {/* Conexión visual con la predicción */}
           <Line
             dataKey="proyeccion"
-            name={`Predicción ${model}`}
+            name={model}
             stroke="#c3a777"
-            strokeWidth={2.2}
             strokeDasharray="5 4"
+            strokeWidth={2}
             dot={false}
             connectNulls
             isAnimationActive={false}
           />
 
+          {/* Separación entre histórico y futuro */}
           <ReferenceLine
-            x={origin.fecha}
+            x={originDate}
             stroke="#5e6869"
             strokeDasharray="3 4"
           />
 
+          {/* Intervalo del 80 % */}
           {lower !== null &&
             upper !== null &&
             Number.isFinite(lower) &&
@@ -209,14 +229,15 @@ export function ModelForecastChart({
                 ]}
                 stroke="#c3a777"
                 strokeWidth={3}
-                strokeOpacity={0.8}
+                strokeOpacity={0.75}
               />
             )}
 
+          {/* Punto predicho por el modelo */}
           <ReferenceDot
             x={targetDate}
             y={prediction}
-            r={7}
+            r={6}
             fill="#c3a777"
             stroke="#13171a"
             strokeWidth={2}
@@ -226,10 +247,11 @@ export function ModelForecastChart({
       </ResponsiveContainer>
 
       <p className="source-note">
-        Punto dorado: predicción {model}.
-        La línea discontinua es una conexión visual,
-        no una trayectoria diaria estimada.
-        El intervalo del 80 % es nominal.
+        Punto dorado: predicción {model} para el{" "}
+        {dateLabel(targetDate, true)}. La línea discontinua
+        conecta visualmente el último precio con la predicción,
+        pero no representa una trayectoria diaria estimada.
+        La barra vertical representa el intervalo nominal del 80 %.
       </p>
     </div>
   );
